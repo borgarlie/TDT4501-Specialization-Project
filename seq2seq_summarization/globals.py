@@ -12,7 +12,7 @@ use_cuda = torch.cuda.is_available()
 
 teacher_forcing_ratio = 0.5
 
-MAX_LENGTH = 100
+MAX_LENGTH = 55
 
 # Preparing Training Data
 # -----------------------

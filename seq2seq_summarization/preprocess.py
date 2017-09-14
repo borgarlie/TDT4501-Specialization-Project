@@ -42,21 +42,24 @@ def generate_vocabulary():
 
     longest_sentence = 0
 
+    max_size = 100
+
     print("Counting words...")
-    for sentence in article:
-        vocabulary.add_sentence(sentence)
-        if len(sentence.split(' ')) > longest_sentence:
-            longest_sentence = len(sentence.split(' '))
+    # for sentence in article:
+    for sentence in range(0, max_size):
+        vocabulary.add_sentence(article[sentence])
+        if len(article[sentence].split(' ')) > longest_sentence:
+            longest_sentence = len(article[sentence].split(' '))
             # print(sentence)
-    for sentence in title:
-        vocabulary.add_sentence(sentence)
-        if len(sentence.split(' ')) > longest_sentence:
-            longest_sentence = len(sentence.split(' '))
+    for sentence in range(0, max_size):
+        vocabulary.add_sentence(title[sentence])
+        if len(title[sentence].split(' ')) > longest_sentence:
+            longest_sentence = len(title[sentence].split(' '))
 
     print("longest sentence: ", longest_sentence)
 
     print("Counted words: %s" % vocabulary.n_words)
-    return article, title, vocabulary
+    return article[:max_size], title[:max_size], vocabulary
 
 
 if __name__ == '__main__':

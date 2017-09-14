@@ -239,6 +239,6 @@ if __name__ == '__main__':
         encoder1 = encoder1.cuda()
         decoder1 = decoder1.cuda()
 
-    train_iters(articles, titles, vocabulary, encoder1, decoder1, 500, print_every=50)
+    train_iters(articles, titles, vocabulary, encoder1, decoder1, 1000, print_every=50, plot_every=50)
 
     evaluate_randomly(articles, titles, vocabulary, encoder1, decoder1)
