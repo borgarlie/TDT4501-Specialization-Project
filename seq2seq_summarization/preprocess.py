@@ -1,6 +1,4 @@
 from __future__ import unicode_literals, print_function, division
-
-import operator
 from io import open
 
 
@@ -138,15 +136,6 @@ if __name__ == '__main__':
     relative_path_valid = '../data/articles1/valid'
     relative_path_politi = '../data/articles2_nor/politi'
     article, title, vocabulary = generate_vocabulary(relative_path_politi, 5090)
-    # print("Article 1337: ")
-    # print(article[1337])
-    # print("Title 1337: ")
-    # print(title[1337])
-    # print("Word 1337: ")
-    # print(vocabulary.index2word[1337])
-    # print("Finished")
-
-    # print(vocabulary.index2word)
 
     vocab_items = []
     for k, v in vocabulary.index2word.items():
@@ -161,6 +150,3 @@ if __name__ == '__main__':
     print("Unked chars: %d" % len(single_chars_to_unk))
 
     # save_articles_with_unk(article, title, relative_path_politi, single_chars_to_unk)
-
-
-# consider one UNK per starting letter (making it 29 different UNK tokens) for every vocabulary[word] = 1

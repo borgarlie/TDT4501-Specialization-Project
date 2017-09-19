@@ -1,10 +1,10 @@
 from __future__ import unicode_literals, print_function, division
 import random
 from torch import optim
-from preprocess import *
-from encoder import *
-from decoder import *
-from globals import *
+from seq2seq_summarization.preprocess import *
+from seq2seq_summarization.encoder import *
+from seq2seq_summarization.decoder import *
+from seq2seq_summarization.globals import *
 
 ######################################################################
 # Training the Model
@@ -34,7 +34,7 @@ from globals import *
 
 
 def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion,
-          max_length=MAX_LENGTH):
+          max_length, attention=False):
     encoder_hidden = encoder.init_hidden()
 
     encoder_optimizer.zero_grad()
@@ -47,10 +47,8 @@ def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, 
     encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
 
     loss = 0
-
     for ei in range(input_length):
-        encoder_output, encoder_hidden = encoder(
-            input_variable[ei], encoder_hidden)
+        encoder_output, encoder_hidden = encoder(input_variable[ei], encoder_hidden)
         encoder_outputs[ei] = encoder_output[0][0]
 
     decoder_input = Variable(torch.LongTensor([[SOS_token]]))
@@ -63,14 +61,22 @@ def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, 
     if use_teacher_forcing:
         # Teacher forcing: Feed the target as the next input
         for di in range(target_length):
-            decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
+            if attention:
+                decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
+                                                                            encoder_outputs)
+            else:
+                decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
             loss += criterion(decoder_output, target_variable[di])
             decoder_input = target_variable[di]  # Teacher forcing
 
     else:
         # Without teacher forcing: use its own predictions as the next input
         for di in range(target_length):
-            decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
+            if attention:
+                decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
+                                                                            encoder_outputs)
+            else:
+                decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
             topv, topi = decoder_output.data.topk(1)
             ni = topi[0][0]
 
@@ -101,8 +107,8 @@ def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, 
 # of examples, time so far, estimated time) and average loss.
 #
 
-def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, print_every=1000, plot_every=100,
-                learning_rate=0.01):
+def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_length, print_every=1000, plot_every=100,
+                learning_rate=0.01, attention=False):
     start = time.time()
     plot_losses = []
     print_loss_total = 0  # Reset every print_every
@@ -111,30 +117,24 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, print_e
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
     decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
 
-    # training_pairs = [variables_from_pair(random.choice(articles))
-    #                   for i in range(n_iters)]
-
     criterion = nn.NLLLoss()
-    # criterion = nn.L
-    # TODO: log loss instead ?
 
     for iter in range(1, n_iters + 1):
         random_number = random.randint(0, len(articles)-1)
         input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
                                                               vocabulary)
 
-        print("Iteration: " + str(iter))
+        # print("Iteration: " + str(iter))
 
-        loss = train(input_variable, target_variable, encoder,
-                     decoder, encoder_optimizer, decoder_optimizer, criterion)
+        loss = train(input_variable, target_variable, encoder, decoder, encoder_optimizer, decoder_optimizer,
+                     criterion, max_length=max_length, attention=attention)
         print_loss_total += loss
         plot_loss_total += loss
 
         if iter % print_every == 0:
             print_loss_avg = print_loss_total / print_every
             print_loss_total = 0
-            print('%s (%d %d%%) %.4f' % (time_since(start, iter / n_iters),
-                                         iter, iter / n_iters * 100, print_loss_avg))
+            print('%s (%d %d%%) %.4f' % (time_since(start, iter / n_iters), iter, iter / n_iters * 100, print_loss_avg))
 
         if iter % plot_every == 0:
             plot_loss_avg = plot_loss_total / plot_every
@@ -155,7 +155,7 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, print_e
 # attention outputs for display later.
 
 
-def evaluate(vocabulary, encoder, decoder, sentence, max_length=MAX_LENGTH):
+def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False):
     input_variable = variable_from_sentence(vocabulary, sentence)
     input_length = input_variable.size()[0]
     encoder_hidden = encoder.init_hidden()
@@ -171,11 +171,13 @@ def evaluate(vocabulary, encoder, decoder, sentence, max_length=MAX_LENGTH):
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
     decoder_hidden = encoder_hidden
-
     decoded_words = []
 
     for di in range(max_length):
-        decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
+        if attention:
+            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
+        else:
+            decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
         topv, topi = decoder_output.data.topk(1)
         ni = topi[0][0]
         if ni == EOS_token:
@@ -195,14 +197,14 @@ def evaluate(vocabulary, encoder, decoder, sentence, max_length=MAX_LENGTH):
 # input, target, and output to make some subjective quality judgements:
 
 
-def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, n=10):
-    for i in range(n):
-        random_number = random.randint(0, len(articles) - 1)
-        input_sentence = articles[random_number]
-        target_sentence = titles[random_number]
+def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, max_length, attention=False):
+    for i in range(len(articles)):
+        input_sentence = articles[i]
+        target_sentence = titles[i]
         print('>', input_sentence)
         print('=', target_sentence)
-        output_words = evaluate(vocabulary, encoder, decoder, input_sentence)
+        output_words = evaluate(vocabulary, encoder, decoder, input_sentence, max_length=max_length,
+                                attention=attention)
         output_sentence = ' '.join(output_words)
         print('<', output_sentence)
         print('')
@@ -229,16 +231,40 @@ def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, n=10):
 
 if __name__ == '__main__':
 
-    articles, titles, vocabulary = generate_vocabulary()
-
+    relative_path = '../data/articles2_nor/politi.unk'
+    num_articles = 50
+    num_evaluate = 10
+    attention = True
     hidden_size = 256
-    encoder1 = EncoderRNN(vocabulary.n_words, hidden_size, 1)
-    decoder1 = DecoderRNN(hidden_size, vocabulary.n_words, 1)
+    iterations = 100
+    max_length = 1 + 150
+    n_layers = 1
+    dropout_p = 0.1
+
+    articles, titles, vocabulary = generate_vocabulary(relative_path, num_articles+num_evaluate)
+
+    train_length = num_articles - num_evaluate
+    test_length = num_evaluate
+
+    train_articles = articles[0:train_length]
+    train_titles = titles[0:train_length]
+    test_articles = articles[train_length:train_length+test_length]
+    test_titles = titles[train_length:train_length+test_length]
+
+    encoder1 = EncoderRNN(vocabulary.n_words, hidden_size, n_layers=n_layers)
+
+    if attention:
+        decoder1 = AttnDecoderRNN(hidden_size, vocabulary.n_words, max_length=max_length, n_layers=n_layers,
+                                  dropout_p=dropout_p)
+    else:
+        decoder1 = DecoderRNN(hidden_size, vocabulary.n_words, n_layers=n_layers)
 
     if use_cuda:
         encoder1 = encoder1.cuda()
         decoder1 = decoder1.cuda()
 
-    train_iters(articles, titles, vocabulary, encoder1, decoder1, 1000, print_every=50, plot_every=50)
+    train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations, max_length=max_length,
+                print_every=50, plot_every=50, attention=attention)
 
-    evaluate_randomly(articles, titles, vocabulary, encoder1, decoder1)
+    evaluate_randomly(test_articles, test_titles, vocabulary, encoder1, decoder1, max_length=max_length,
+                      attention=attention)

@@ -1,5 +1,5 @@
 import torch.nn as nn
-from globals import *
+from seq2seq_summarization.globals import *
 
 ######################################################################
 # The Encoder
