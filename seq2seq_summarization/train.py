@@ -232,16 +232,16 @@ def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, max_length
 if __name__ == '__main__':
 
     relative_path = '../data/articles2_nor/politi.unk'
-    num_articles = 50
-    num_evaluate = 10
+    num_articles = 5115
+    num_evaluate = 25
     attention = True
     hidden_size = 256
-    iterations = 100
+    iterations = 25000
     max_length = 1 + 150
     n_layers = 1
     dropout_p = 0.1
 
-    articles, titles, vocabulary = generate_vocabulary(relative_path, num_articles+num_evaluate)
+    articles, titles, vocabulary = generate_vocabulary(relative_path, num_articles)
 
     train_length = num_articles - num_evaluate
     test_length = num_evaluate
