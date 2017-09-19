@@ -1,5 +1,6 @@
 import pickle
 import re
+from bs4 import BeautifulSoup
 
 
 def process_text(text):
@@ -13,19 +14,22 @@ def process_text(text):
     6) Remove possibly space from start and end of text
     7) Replace tab and newlines with space
     8) Replace all numbers with <###>   -- maybe it should be a # per digit instead, as done some other place?
-    9) Add <EOS> token
+    9) Add space between numbers and words
     :param text: The text to be processed
     :return: The processed text
     """
-    text = re.sub("<.*?>", " ", text)  # 1
+    soup = BeautifulSoup(text, "lxml")
+    for script in soup(["script", "style"]):  # remove all javascript and stylesheet code
+        script.extract()
+    text = soup.get_text()
     text = re.sub('(?<=[^?!.0-9])(?=[.,!?])', ' ', text)  # 4
-    text = re.sub('(?=[,])', ' ', text)  # 4
+    text = re.sub('(?=, )', ' ', text)  # 4
     text = re.sub('(?=\. )', ' ', text)  # 4
     text = text.lower()  # 2
     text = re.sub("[^A-Za-z0-9 .!?,øæå]+", "", text)  # 3
+    text = re.sub('(?<=[0-9][0-9])+', ' ', text)
     text = re.sub('[0-9]', '#', text)  # 8
     text = " ".join(text.split())  # 5, 6, 7  - i think
-    text = text + " <EOS>"  # 9
     return text
 
 
