@@ -1,10 +1,16 @@
 from __future__ import unicode_literals, print_function, division
 import random
+import shutil
+
+import os
 from torch import optim
 from seq2seq_summarization.preprocess import *
 from seq2seq_summarization.encoder import *
 from seq2seq_summarization.decoder import *
 from seq2seq_summarization.globals import *
+
+current_iteration = 0
+
 
 ######################################################################
 # Training the Model
@@ -107,39 +113,61 @@ def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, 
 # of examples, time so far, estimated time) and average loss.
 #
 
-def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_length, print_every=1000, plot_every=100,
-                learning_rate=0.01, attention=False):
+def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_length,
+                encoder_optimizer, decoder_optimizer, save_file, save_every=-1,
+                start_iter=1, print_every=1000, plot_every=100, attention=False):
     start = time.time()
     plot_losses = []
     print_loss_total = 0  # Reset every print_every
     plot_loss_total = 0  # Reset every plot_every
 
-    encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
-    decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
-
     criterion = nn.NLLLoss()
 
-    for iter in range(1, n_iters + 1):
-        random_number = random.randint(0, len(articles)-1)
-        input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
-                                                              vocabulary)
+    print("Starting training")
 
-        # print("Iteration: " + str(iter))
+    try:
+        for itr in range(start_iter, n_iters + 1):
+            random_number = random.randint(0, len(articles) - 1)
+            input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
+                                                                  vocabulary)
 
-        loss = train(input_variable, target_variable, encoder, decoder, encoder_optimizer, decoder_optimizer,
-                     criterion, max_length=max_length, attention=attention)
-        print_loss_total += loss
-        plot_loss_total += loss
+            loss = train(input_variable, target_variable, encoder, decoder, encoder_optimizer, decoder_optimizer,
+                         criterion, max_length=max_length, attention=attention)
+            print_loss_total += loss
+            plot_loss_total += loss
 
-        if iter % print_every == 0:
-            print_loss_avg = print_loss_total / print_every
-            print_loss_total = 0
-            print('%s (%d %d%%) %.4f' % (time_since(start, iter / n_iters), iter, iter / n_iters * 100, print_loss_avg))
+            if itr % print_every == 0:
+                print_loss_avg = print_loss_total / print_every
+                print_loss_total = 0
+                print('%s (%d %d%%) %.4f' % (time_since(start, itr / n_iters), itr, itr / n_iters * 100, print_loss_avg))
 
-        if iter % plot_every == 0:
-            plot_loss_avg = plot_loss_total / plot_every
-            plot_losses.append(plot_loss_avg)
-            plot_loss_total = 0
+            if itr % plot_every == 0:
+                plot_loss_avg = plot_loss_total / plot_every
+                plot_losses.append(plot_loss_avg)
+                plot_loss_total = 0
+
+            if save_every > 0 and itr % save_every == 0:
+                save_state({
+                    'iteration': itr,
+                    'attention': attention,
+                    'max_length': max_length,
+                    'model_state_encoder': encoder1.state_dict(),
+                    'model_state_decoder': decoder1.state_dict(),
+                    'optimizer_state_encoder': encoder_optimizer.state_dict(),
+                    'optimizer_state_decoder': decoder_optimizer.state_dict()
+                }, save_file)
+    except KeyboardInterrupt:
+        if save_file:
+            print("Interrupted: Saving state")
+            save_state({
+                'iteration': itr,
+                'attention': attention,
+                'max_length': max_length,
+                'model_state_encoder': encoder1.state_dict(),
+                'model_state_decoder': decoder1.state_dict(),
+                'optimizer_state_encoder': encoder_optimizer.state_dict(),
+                'optimizer_state_decoder': decoder_optimizer.state_dict()
+            }, save_file)
 
     show_plot(plot_losses)
 
@@ -210,36 +238,44 @@ def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, max_length
         print('')
 
 
-######################################################################
-# Training and Evaluating
-# =======================
-#
-# With all these helper functions in place (it looks like extra work, but
-# it's easier to run multiple experiments easier) we can actually
-# initialize a network and start training.
-#
-# Remember that the input sentences were heavily filtered. For this small
-# dataset we can use relatively small networks of 256 hidden nodes and a
-# single GRU layer. After about 40 minutes on a MacBook CPU we'll get some
-# reasonable results.
-#
-# .. Note::
-#    If you run this notebook you can train, interrupt the kernel,
-#    evaluate, and continue training later. Comment out the lines where the
-#    encoder and decoder are initialized and run ``trainIters`` again.
-#
+def save_state(state, filename):
+    torch.save(state, filename)
+
+
+def load_state(filename):
+    if os.path.isfile(filename):
+        state = torch.load(filename)
+        return (state['iteration'], state['attention'], state['max_length'],
+                state['model_state_encoder'], state['model_state_decoder'],
+                state['optimizer_state_encoder'], state['optimizer_state_decoder'])
+    else:
+        raise FileNotFoundError
+
 
 if __name__ == '__main__':
 
+    # Train and evaluate parameters
     relative_path = '../data/articles2_nor/politi.unk'
     num_articles = 5115
     num_evaluate = 25
+    iterations = 25000
+    start_iter = 1
+
+    # Model parameters
     attention = True
     hidden_size = 256
-    iterations = 25000
     max_length = 1 + 150
     n_layers = 1
     dropout_p = 0.1
+    learning_rate = 0.01
+    # TODO: Add teacher forcing here instead of in globals
+
+    save_model = True
+    save_file = '../saved_models/testing/seq2seq_hidden256_layer1_politi.pth.tar'
+
+    # When loading a model - the hyper parameters defined here are ignored as they are set in the model
+    load_model = False
+    load_file = '../saved_models/testing/seq2seq_hidden256_layer1_politi.pth.tar'
 
     articles, titles, vocabulary = generate_vocabulary(relative_path, num_articles)
 
@@ -248,8 +284,8 @@ if __name__ == '__main__':
 
     train_articles = articles[0:train_length]
     train_titles = titles[0:train_length]
-    test_articles = articles[train_length:train_length+test_length]
-    test_titles = titles[train_length:train_length+test_length]
+    test_articles = articles[train_length:train_length + test_length]
+    test_titles = titles[train_length:train_length + test_length]
 
     encoder1 = EncoderRNN(vocabulary.n_words, hidden_size, n_layers=n_layers)
 
@@ -263,8 +299,25 @@ if __name__ == '__main__':
         encoder1 = encoder1.cuda()
         decoder1 = decoder1.cuda()
 
-    train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations, max_length=max_length,
-                print_every=50, plot_every=50, attention=attention)
+    encoder_optimizer = optim.SGD(encoder1.parameters(), lr=learning_rate)
+    decoder_optimizer = optim.SGD(decoder1.parameters(), lr=learning_rate)
+
+    if load_model:
+        try:
+            (start_iter, attention, max_length, model_state_encoder,
+             model_state_decoder, optimizer_state_encoder, optimizer_state_decoder) = load_state(load_file)
+            encoder1.load_state_dict(model_state_encoder)
+            decoder1.load_state_dict(model_state_decoder)
+            encoder_optimizer.load_state_dict(optimizer_state_encoder)
+            decoder_optimizer.load_state_dict(optimizer_state_decoder)
+            print("Resuming training from iteration: %d" % start_iter)
+        except FileNotFoundError:
+            print("No file found: exiting")
+            exit()
+
+    train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations, max_length,
+                encoder_optimizer, decoder_optimizer, save_file,
+                save_every=1000, start_iter=start_iter, print_every=10, plot_every=50, attention=attention)
 
     evaluate_randomly(test_articles, test_titles, vocabulary, encoder1, decoder1, max_length=max_length,
                       attention=attention)
