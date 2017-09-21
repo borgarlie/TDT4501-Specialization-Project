@@ -23,11 +23,9 @@ def process_text(text):
         script.extract()
     text = soup.get_text()
     text = re.sub('(?<=[^?!.0-9])(?=[.,!?])', ' ', text)  # 4
-    text = re.sub('(?=, )', ' ', text)  # 4
-    text = re.sub('(?=\. )', ' ', text)  # 4
+    text = re.sub(r'(?<=[.,])(?=[^\s])', r' ', text)  # 4
     text = text.lower()  # 2
-    text = re.sub("[^A-Za-z0-9 .!?,øæå]+", "", text)  # 3
-    text = re.sub('(?<=[0-9][0-9])+', ' ', text)
+    text = re.sub("[^A-Za-z0-9 .!?,øæå]+", " ", text)  # 3
     text = re.sub('[0-9]', '#', text)  # 8
     text = " ".join(text.split())  # 5, 6, 7  - i think
     return text
