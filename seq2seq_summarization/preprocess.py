@@ -149,29 +149,27 @@ def count_low_length(articles, titles):
     num_too_short_article = 0
     num_too_short_title = 0
     for item in range(0, len(articles)):
-        if len(articles[item]) <= len(titles[item]):
+        if len(articles[item].split(" ")) <= len(titles[item].split(" ")):
             num_less_than_title += 1
-        elif len(articles[item]) <= len(titles[item]) + 10:
+        elif len(articles[item].split(" ")) <= len(titles[item].split(" ")) + 10:
             num_abit_more += 1
-        elif len(articles[item]) < 25:
+        elif len(articles[item].split(" ")) < 25:
             num_too_short_article += 1
-        elif len(titles[item]) < 5:
+        elif len(titles[item].split(" ")) < 4:
             num_too_short_title += 1
     print("Articles less than 25 words: %d" % num_too_short_article)
-    print("Titles less than 5 words: %d" % num_too_short_title)
+    print("Titles less than 4 words: %d" % num_too_short_title)
     print("Articles with length==title length: %d" % num_less_than_title)
     print("Articles with length less than len(title) + 10: %d" % num_abit_more)
-
 
 
 if __name__ == '__main__':
     relative_path_valid = '../data/articles1/valid'
     relative_path_politi = '../data/articles2_nor/politi'
-    relative_path_len80 = '../data/articles2_nor/all_len_80'
+    relative_path_len80 = '../data/articles2_nor/all_len_25to80'
     relative_path_len80_skip = '../data/articles2_nor/all_len_80_skip'
-    relative_path_len80_ski2p = '../data/articles2_nor/all_len_80_skip2'
 
-    article, title, vocabulary = generate_vocabulary(relative_path_len80, 11465)
+    article, title, vocabulary = generate_vocabulary(relative_path_len80, 9721)
 
     vocab_items = []
     for k, v in vocabulary.index2word.items():

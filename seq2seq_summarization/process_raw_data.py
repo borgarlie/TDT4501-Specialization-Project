@@ -32,7 +32,7 @@ def process_text(text):
 
 
 class Article:
-    def __init__(self, article_dict, max_words, min_words):
+    def __init__(self, article_dict, max_words, min_words, min_title):
         art = article_dict[-1]
 
         if art is None:
@@ -60,6 +60,8 @@ class Article:
             raise ValueError("body too small")
         elif article_length <= title_length + 5:
             raise ValueError("Article length is smaller than title length + 5")
+        elif title_length < min_title:
+            raise ValueError("Title too small")
 
     def __str__(self):
         text = "Tags: \n" + self.tags.__str__() + "\n"
@@ -75,7 +77,7 @@ def has_tag(article, tag):
     return tag in article.tags
 
 
-def get_articles_from_pickle_file(path, max_words=150, min_words=25):
+def get_articles_from_pickle_file(path, max_words=100, min_words=25, min_title=4):
     articles = []
     with open(path, 'rb') as f:
         print("Loading data")
@@ -85,7 +87,7 @@ def get_articles_from_pickle_file(path, max_words=150, min_words=25):
         non_errors = 0
         for key, value in data.items():
             try:
-                articles.append(Article(value, max_words, min_words))
+                articles.append(Article(value, max_words, min_words, min_title))
                 non_errors += 1
             except ValueError:
                 errors += 1
@@ -145,10 +147,11 @@ def filter_list_with_single_tag(articles, tag):
 
 if __name__ == '__main__':
     tag = "all_len_25to80"
-    max_words = 80
+    max_words = 100
     min_words = 25
+    min_title = 4
 
-    articles = get_articles_from_pickle_file('../data/articles2_nor/total.pkl', max_words, min_words)
+    articles = get_articles_from_pickle_file('../data/articles2_nor/total.pkl', max_words, min_words, min_title)
     # filtered = filter_list_with_single_tag(articles, tag)
     save_articles_for_single_tag(articles, tag, '../data/articles2_nor/')
 
