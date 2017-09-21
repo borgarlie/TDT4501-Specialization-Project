@@ -34,7 +34,7 @@ def process_text(text):
 
 
 class Article:
-    def __init__(self, article_dict, max_words):
+    def __init__(self, article_dict, max_words, min_words):
         art = article_dict[-1]
 
         if art is None:
@@ -54,8 +54,14 @@ class Article:
             self.tags.append(obj["urlPattern"])  # urlPattern vs. displayName
         self.title = process_text(art["title"])
         self.body = process_text(art["body"])
-        if len(self.body.split(" ")) > max_words:
+        article_length = len(self.body.split(" "))
+        title_length = len(self.title.split(" "))
+        if article_length > max_words:
             raise ValueError("body too large")
+        elif article_length < min_words:
+            raise ValueError("body too small")
+        elif article_length <= title_length + 5:
+            raise ValueError("Article length is smaller than title length + 5")
 
     def __str__(self):
         text = "Tags: \n" + self.tags.__str__() + "\n"
@@ -71,7 +77,7 @@ def has_tag(article, tag):
     return tag in article.tags
 
 
-def get_articles_from_pickle_file(path, max_words=150):
+def get_articles_from_pickle_file(path, max_words=150, min_words=25):
     articles = []
     with open(path, 'rb') as f:
         print("Loading data")
@@ -81,7 +87,7 @@ def get_articles_from_pickle_file(path, max_words=150):
         non_errors = 0
         for key, value in data.items():
             try:
-                articles.append(Article(value, max_words))
+                articles.append(Article(value, max_words, min_words))
                 non_errors += 1
             except ValueError:
                 errors += 1
@@ -140,11 +146,12 @@ def filter_list_with_single_tag(articles, tag):
 
 
 if __name__ == '__main__':
-    tag = "politi"
-    max_words = 150
+    tag = "all_len_25to80"
+    max_words = 80
+    min_words = 25
 
-    articles = get_articles_from_pickle_file('../data/articles2_nor/total.pkl', max_words)
-    filtered = filter_list_with_single_tag(articles, tag)
-    save_articles_for_single_tag(filtered, tag, '../data/articles2_nor/')
+    articles = get_articles_from_pickle_file('../data/articles2_nor/total.pkl', max_words, min_words)
+    # filtered = filter_list_with_single_tag(articles, tag)
+    save_articles_for_single_tag(articles, tag, '../data/articles2_nor/')
 
     print("Done")

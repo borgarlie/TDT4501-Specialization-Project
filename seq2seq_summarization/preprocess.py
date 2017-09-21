@@ -93,10 +93,10 @@ def count_unk_items(vocab_items):
     print("total = %d" % total_unks)
 
 
-def get_single_char_list_to_unk(vocab_items):
+def get_list_to_unk(vocab_items, min_freq=3):
     vocab_items_single_char = []
     for item in vocab_items:
-        if item.num == 1:
+        if item.num <= min_freq:
             vocab_items_single_char.append(item.value)
     return vocab_items_single_char
 
@@ -106,21 +106,32 @@ def replace_word_with_unk(word):
 
 
 def save_articles_with_unk(articles, titles, relative_path, to_replace_vocabulary):
+    articles_to_skip = []
+    num_unks_10 = 0
     with open(relative_path + '.unk.article.txt', 'w') as f:
-        for item in articles:
-            words = item.split(" ")
+        for item in range(0, len(articles)):
+            num_unk = 0
+            words = articles[item].split(" ")
             unked_words = []
             for word in words:
                 if word in to_replace_vocabulary:
                     unked_words.append(replace_word_with_unk(word))
+                    num_unk += 1
                 else:
                     unked_words.append(word)
-            article = " ".join(unked_words)
-            f.write(article)
-            f.write("\n")
+            if num_unk >= 10:
+                num_unks_10 += 1
+                articles_to_skip.append(item)
+            else:
+                article = " ".join(unked_words)
+                f.write(article)
+                f.write("\n")
+    print("Articles with 10 or more UNK: %d" % num_unks_10)
     with open(relative_path + '.unk.title.txt', 'w') as f:
-        for item in titles:
-            words = item.split(" ")
+        for item in range(0, len(titles)):
+            if item in articles_to_skip:
+                continue
+            words = titles[item].split(" ")
             unked_words = []
             for word in words:
                 if word in to_replace_vocabulary:
@@ -132,10 +143,35 @@ def save_articles_with_unk(articles, titles, relative_path, to_replace_vocabular
             f.write("\n")
 
 
+def count_low_length(articles, titles):
+    num_less_than_title = 0
+    num_abit_more = 0
+    num_too_short_article = 0
+    num_too_short_title = 0
+    for item in range(0, len(articles)):
+        if len(articles[item]) <= len(titles[item]):
+            num_less_than_title += 1
+        elif len(articles[item]) <= len(titles[item]) + 10:
+            num_abit_more += 1
+        elif len(articles[item]) < 25:
+            num_too_short_article += 1
+        elif len(titles[item]) < 5:
+            num_too_short_title += 1
+    print("Articles less than 25 words: %d" % num_too_short_article)
+    print("Titles less than 5 words: %d" % num_too_short_title)
+    print("Articles with length==title length: %d" % num_less_than_title)
+    print("Articles with length less than len(title) + 10: %d" % num_abit_more)
+
+
+
 if __name__ == '__main__':
     relative_path_valid = '../data/articles1/valid'
     relative_path_politi = '../data/articles2_nor/politi'
-    article, title, vocabulary = generate_vocabulary(relative_path_politi, 5090)
+    relative_path_len80 = '../data/articles2_nor/all_len_80'
+    relative_path_len80_skip = '../data/articles2_nor/all_len_80_skip'
+    relative_path_len80_ski2p = '../data/articles2_nor/all_len_80_skip2'
+
+    article, title, vocabulary = generate_vocabulary(relative_path_len80, 11465)
 
     vocab_items = []
     for k, v in vocabulary.index2word.items():
@@ -145,8 +181,12 @@ if __name__ == '__main__':
     # for item in sorted_x:
     #     print(item)
 
-    single_chars_to_unk = get_single_char_list_to_unk(vocab_items)
+    minimum_frequency = 3
+    unked_chars = get_list_to_unk(vocab_items, minimum_frequency)
 
-    print("Unked chars: %d" % len(single_chars_to_unk))
+    print("Unked chars: %d" % len(unked_chars))
+    print("Remaining vocab: %d" % (len(vocab_items) - len(unked_chars)))
 
-    # save_articles_with_unk(article, title, relative_path_politi, single_chars_to_unk)
+    count_low_length(article, title)
+
+    # save_articles_with_unk(article, title, relative_path_len80_skip, unked_chars)
