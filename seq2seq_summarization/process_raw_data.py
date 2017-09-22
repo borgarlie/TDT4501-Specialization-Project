@@ -48,6 +48,37 @@ class Article:
         if "body" not in art:
             raise ValueError("Body not present")
 
+        self.model = "none"
+        if "model" in art:
+            self.model = art["model"]
+        if self.model != "story":
+            raise ValueError("Model should be 'story'")
+
+        self.preview = True
+        if "fields" in art:
+            fields = art["fields"]
+            if "isPreview" in fields:
+                self.preview = fields["isPreview"]
+        if self.preview:
+            raise ValueError("Preview should be False")
+
+        self.title = process_text(art["title"])
+        title_length = len(self.title.split(" "))
+        if title_length < min_title:
+            raise ValueError("Title too small")
+
+        self.body = process_text(art["body"])
+        article_length = len(self.body.split(" "))
+        if article_length > max_words:
+            raise ValueError("body too large")
+        elif article_length < min_words:
+            raise ValueError("body too small")
+        elif article_length <= title_length + 5:
+            raise ValueError("Article length is smaller than title length + 5")
+
+        if is_not_contructive_article(self.body):
+            raise ValueError("Not constructive article")
+
         self.tags = []
         if "tags" in art:
             tags = art["tags"]
@@ -55,27 +86,13 @@ class Article:
                 if "urlPattern" not in obj:
                     continue
                 self.tags.append(obj["urlPattern"])  # urlPattern vs. displayName
-        self.title = process_text(art["title"])
-        self.body = process_text(art["body"])
-        article_length = len(self.body.split(" "))
-        title_length = len(self.title.split(" "))
-        if article_length > max_words:
-            raise ValueError("body too large")
-        elif article_length < min_words:
-            raise ValueError("body too small")
-        elif article_length <= title_length + 5:
-            raise ValueError("Article length is smaller than title length + 5")
-        elif title_length < min_title:
-            raise ValueError("Title too small")
-
-        if is_not_contructive_article(self.body):
-            raise ValueError("Not constructive article")
 
     def __str__(self):
         text = "Tags: \n" + self.tags.__str__() + "\n"
         text += "Title: \n" + self.title + "\n"
         text += "Body: \n" + self.body + "\n"
         return text
+        # return "model = %s : preview = %s" % (str(self.model), str(self.preview))
 
     def __repr__(self):
         self.__str__()
@@ -154,7 +171,7 @@ def filter_list_with_single_tag(articles, tag):
 
 
 if __name__ == '__main__':
-    tag = "all_len_25to80v2"
+    tag = "all_len_25to80v3"
     max_words = 100
     min_words = 25
     min_title = 4
@@ -162,5 +179,8 @@ if __name__ == '__main__':
     articles = get_articles_from_pickle_file('../data/articles2_nor/total.pkl', max_words, min_words, min_title)
     # filtered = filter_list_with_single_tag(articles, tag)
     save_articles_for_single_tag(articles, tag, '../data/articles2_nor/')
+
+    # for item in articles:
+    #     print(item)
 
     print("Done")

@@ -114,12 +114,13 @@ def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, 
 #
 
 def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_length,
-                encoder_optimizer, decoder_optimizer, save_file, save_every=-1,
+                encoder_optimizer, decoder_optimizer, save_file, best_model_save_file, save_every=-1,
                 start_iter=1, print_every=1000, plot_every=100, attention=False):
     start = time.time()
     plot_losses = []
     print_loss_total = 0  # Reset every print_every
     plot_loss_total = 0  # Reset every plot_every
+    lowest_loss = 999
 
     criterion = nn.NLLLoss()
 
@@ -140,6 +141,19 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
                 print_loss_avg = print_loss_total / print_every
                 print_loss_total = 0
                 print('%s (%d %d%%) %.4f' % (time_since(start, itr / n_iters), itr, itr / n_iters * 100, print_loss_avg))
+                if print_loss_avg < lowest_loss:
+                    lowest_loss = print_loss_avg
+                    print(" ^ Lowest loss so far")
+                    if save_every > 0:
+                        save_state({
+                            'iteration': itr + 1,
+                            'attention': attention,
+                            'max_length': max_length,
+                            'model_state_encoder': encoder1.state_dict(),
+                            'model_state_decoder': decoder1.state_dict(),
+                            'optimizer_state_encoder': encoder_optimizer.state_dict(),
+                            'optimizer_state_decoder': decoder_optimizer.state_dict()
+                        }, best_model_save_file)
 
             if itr % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
@@ -148,7 +162,7 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
 
             if save_every > 0 and itr % save_every == 0:
                 save_state({
-                    'iteration': itr,
+                    'iteration': itr+1,
                     'attention': attention,
                     'max_length': max_length,
                     'model_state_encoder': encoder1.state_dict(),
@@ -160,7 +174,7 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
         if save_file:
             print("Interrupted: Saving state")
             save_state({
-                'iteration': itr,
+                'iteration': itr+1,
                 'attention': attention,
                 'max_length': max_length,
                 'model_state_encoder': encoder1.state_dict(),
@@ -255,27 +269,28 @@ def load_state(filename):
 if __name__ == '__main__':
 
     # Train and evaluate parameters
-    relative_path = '../data/articles2_nor/politi.unk'
-    num_articles = 5115
-    num_evaluate = 25
-    iterations = 25000
+    relative_path = '../data/articles2_nor/all_len_25to80_skip_v3.unk'
+    num_articles = -1  # -1 means to take the maximum from the provided source
+    num_evaluate = 10
+    iterations = 5000
     start_iter = 1
 
     # Model parameters
     attention = True
-    hidden_size = 256
-    max_length = 1 + 150
+    hidden_size = 128
+    max_length = 1 + 100
     n_layers = 1
     dropout_p = 0.1
     learning_rate = 0.01
     # TODO: Add teacher forcing here instead of in globals
 
-    save_model = True
-    save_file = '../saved_models/testing/seq2seq_hidden256_layer1_politi.pth.tar'
+    save_every = 10  # -1 means never to safe
+    save_file = '../saved_models/testing/seq2seq_hidden256_layer1_len80skip.pth.tar'
+    best_model_save_file = '../saved_models/testing/seq2seq_hidden256_layer1_len80skip_best.pth.tar'
 
     # When loading a model - the hyper parameters defined here are ignored as they are set in the model
     load_model = False
-    load_file = '../saved_models/testing/seq2seq_hidden256_layer1_politi.pth.tar'
+    load_file = '../saved_models/testing/seq2seq_hidden256_layer1_len80skip.pth.tar'
 
     articles, titles, vocabulary = generate_vocabulary(relative_path, num_articles)
 
@@ -316,8 +331,10 @@ if __name__ == '__main__':
             exit()
 
     train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations, max_length,
-                encoder_optimizer, decoder_optimizer, save_file,
-                save_every=1000, start_iter=start_iter, print_every=10, plot_every=50, attention=attention)
+                encoder_optimizer, decoder_optimizer, save_file, best_model_save_file,
+                save_every=save_every, start_iter=start_iter, print_every=10, plot_every=50, attention=attention)
+    # When saving the best model, the average is counted over "print every", to not have this randomly be very low,
+    # we need to have it large enough, I.e. at least 100 ++
 
     evaluate_randomly(test_articles, test_titles, vocabulary, encoder1, decoder1, max_length=max_length,
                       attention=attention)
