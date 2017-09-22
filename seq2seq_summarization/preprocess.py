@@ -166,10 +166,10 @@ def count_low_length(articles, titles):
 if __name__ == '__main__':
     relative_path_valid = '../data/articles1/valid'
     relative_path_politi = '../data/articles2_nor/politi'
-    relative_path_len80 = '../data/articles2_nor/all_len_25to80'
-    relative_path_len80_skip = '../data/articles2_nor/all_len_80_skip'
+    relative_path_len80 = '../data/articles2_nor/all_len_25to80v2'
+    relative_path_len80_skip = '../data/articles2_nor/all_len_25to80_skipv2'
 
-    article, title, vocabulary = generate_vocabulary(relative_path_len80, 9721)
+    article, title, vocabulary = generate_vocabulary(relative_path_len80, 12058)
 
     vocab_items = []
     for k, v in vocabulary.index2word.items():
@@ -179,7 +179,7 @@ if __name__ == '__main__':
     # for item in sorted_x:
     #     print(item)
 
-    minimum_frequency = 3
+    minimum_frequency = 5
     unked_chars = get_list_to_unk(vocab_items, minimum_frequency)
 
     print("Unked chars: %d" % len(unked_chars))
@@ -187,4 +187,4 @@ if __name__ == '__main__':
 
     count_low_length(article, title)
 
-    # save_articles_with_unk(article, title, relative_path_len80_skip, unked_chars)
+    save_articles_with_unk(article, title, relative_path_len80_skip, unked_chars)

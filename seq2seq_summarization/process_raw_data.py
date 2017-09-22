@@ -31,25 +31,30 @@ def process_text(text):
     return text
 
 
+def is_not_contructive_article(text):
+    if text.startswith("er du interessert i historie"):
+        return True
+    return False
+
+
 class Article:
     def __init__(self, article_dict, max_words, min_words, min_title):
         art = article_dict[-1]
 
         if art is None:
             raise ValueError("Article is of type None")
-        if "tags" not in art:
-            raise ValueError("Tags not present")
         if "title" not in art:
             raise ValueError("Title not present")
         if "body" not in art:
             raise ValueError("Body not present")
 
-        tags = art["tags"]
         self.tags = []
-        for obj in tags:
-            if "urlPattern" not in obj:
-                continue
-            self.tags.append(obj["urlPattern"])  # urlPattern vs. displayName
+        if "tags" in art:
+            tags = art["tags"]
+            for obj in tags:
+                if "urlPattern" not in obj:
+                    continue
+                self.tags.append(obj["urlPattern"])  # urlPattern vs. displayName
         self.title = process_text(art["title"])
         self.body = process_text(art["body"])
         article_length = len(self.body.split(" "))
@@ -62,6 +67,9 @@ class Article:
             raise ValueError("Article length is smaller than title length + 5")
         elif title_length < min_title:
             raise ValueError("Title too small")
+
+        if is_not_contructive_article(self.body):
+            raise ValueError("Not constructive article")
 
     def __str__(self):
         text = "Tags: \n" + self.tags.__str__() + "\n"
@@ -146,7 +154,7 @@ def filter_list_with_single_tag(articles, tag):
 
 
 if __name__ == '__main__':
-    tag = "all_len_25to80"
+    tag = "all_len_25to80v2"
     max_words = 100
     min_words = 25
     min_title = 4
