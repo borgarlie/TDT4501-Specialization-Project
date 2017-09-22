@@ -1,1 +1,4 @@
 data/*
+.idea
+saved_models/*
+*.pyc
