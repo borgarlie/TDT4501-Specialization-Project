@@ -11,7 +11,6 @@ from seq2seq_summarization.globals import *
 
 current_iteration = 0
 
-
 ######################################################################
 # Training the Model
 # ------------------
@@ -115,7 +114,7 @@ def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, 
 
 def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_length,
                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file, save_every=-1,
-                start_iter=1, print_every=1000, plot_every=100, attention=False):
+                start_iter=1, total_runtime=0, print_every=1000, plot_every=100, attention=False):
     start = time.time()
     plot_losses = []
     print_loss_total = 0  # Reset every print_every
@@ -140,13 +139,16 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
             if itr % print_every == 0:
                 print_loss_avg = print_loss_total / print_every
                 print_loss_total = 0
-                print('%s (%d %d%%) %.4f' % (time_since(start, itr / n_iters), itr, itr / n_iters * 100, print_loss_avg))
+                progress, total_runtime = time_since(start, itr / n_iters, total_runtime)
+                print('%s (%d %d%%) %.4f' % (progress, itr, itr / n_iters * 100, print_loss_avg))
+                start = time.time()
                 if print_loss_avg < lowest_loss:
                     lowest_loss = print_loss_avg
                     print(" ^ Lowest loss so far")
                     if save_every > 0:
                         save_state({
                             'iteration': itr + 1,
+                            'runtime': total_runtime,
                             'attention': attention,
                             'max_length': max_length,
                             'model_state_encoder': encoder1.state_dict(),
@@ -163,6 +165,7 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
             if save_every > 0 and itr % save_every == 0:
                 save_state({
                     'iteration': itr+1,
+                    'runtime': total_runtime,
                     'attention': attention,
                     'max_length': max_length,
                     'model_state_encoder': encoder1.state_dict(),
@@ -175,6 +178,7 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
             print("Interrupted: Saving state")
             save_state({
                 'iteration': itr+1,
+                'runtime': total_runtime,
                 'attention': attention,
                 'max_length': max_length,
                 'model_state_encoder': encoder1.state_dict(),
@@ -259,7 +263,7 @@ def save_state(state, filename):
 def load_state(filename):
     if os.path.isfile(filename):
         state = torch.load(filename)
-        return (state['iteration'], state['attention'], state['max_length'],
+        return (state['iteration'], state['runtime'], state['attention'], state['max_length'],
                 state['model_state_encoder'], state['model_state_decoder'],
                 state['optimizer_state_encoder'], state['optimizer_state_decoder'])
     else:
@@ -274,6 +278,7 @@ if __name__ == '__main__':
     num_evaluate = 10
     iterations = 5000
     start_iter = 1
+    total_runtime = 0
 
     # Model parameters
     attention = True
@@ -319,7 +324,7 @@ if __name__ == '__main__':
 
     if load_model:
         try:
-            (start_iter, attention, max_length, model_state_encoder,
+            (start_iter, total_runtime, attention, max_length, model_state_encoder,
              model_state_decoder, optimizer_state_encoder, optimizer_state_decoder) = load_state(load_file)
             encoder1.load_state_dict(model_state_encoder)
             decoder1.load_state_dict(model_state_decoder)
@@ -332,7 +337,7 @@ if __name__ == '__main__':
 
     train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations, max_length,
                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file,
-                save_every=save_every, start_iter=start_iter, print_every=10, plot_every=50, attention=attention)
+                save_every=save_every, start_iter=start_iter, total_runtime=total_runtime, print_every=10, plot_every=50, attention=attention)
     # When saving the best model, the average is counted over "print every", to not have this randomly be very low,
     # we need to have it large enough, I.e. at least 100 ++
 
