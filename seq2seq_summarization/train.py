@@ -140,8 +140,8 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
                 print_loss_avg = print_loss_total / print_every
                 print_loss_total = 0
                 progress, total_runtime = time_since(start, itr / n_iters, total_runtime)
-                print('%s (%d %d%%) %.4f' % (progress, itr, itr / n_iters * 100, print_loss_avg))
                 start = time.time()
+                print('%s (%d %d%%) %.4f' % (progress, itr, itr / n_iters * 100, print_loss_avg))
                 if print_loss_avg < lowest_loss:
                     lowest_loss = print_loss_avg
                     print(" ^ Lowest loss so far")
@@ -176,6 +176,7 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
     except KeyboardInterrupt:
         if save_file:
             print("Interrupted: Saving state")
+            progress, total_runtime = time_since(start, itr / n_iters, total_runtime)
             save_state({
                 'iteration': itr+1,
                 'runtime': total_runtime,
