@@ -12,6 +12,8 @@ use_cuda = torch.cuda.is_available()
 
 teacher_forcing_ratio = 0.5
 
+view_plot = True
+
 # Preparing Training Data
 # -----------------------
 #
@@ -75,3 +77,5 @@ def show_plot(points):
     loc = ticker.MultipleLocator(base=0.2)
     ax.yaxis.set_major_locator(loc)
     plt.plot(points)
+    if view_plot:
+        plt.show()

@@ -202,7 +202,7 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
 # attention outputs for display later.
 
 
-def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False):
+def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False, beams=3):
     input_variable = variable_from_sentence(vocabulary, sentence)
     input_length = input_variable.size()[0]
     encoder_hidden = encoder.init_hidden()
@@ -220,6 +220,33 @@ def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False
     decoder_hidden = encoder_hidden
     decoded_words = []
 
+    # Hard coding the first round in the loop to generate a beam search from the top k candidates of the first word
+    if attention:
+        decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
+    else:
+        decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
+    topv, topi = decoder_output.data.topk(beams)  # standard was 1
+    decoder_input = []
+    for i in range(beams):
+        decoded_words.append([])
+        ni = topi[0][i]
+        if ni == EOS_token:
+            decoded_words[i].append('<EOS>')
+        else:
+            decoded_words[i].append(vocabulary.index2word[ni])
+        decoder_input1 = Variable(torch.LongTensor([[ni]]))
+        decoder_input.append(decoder_input1.cuda() if use_cuda else decoder_input1)
+
+    # looping the beams
+    for beam in range(beams):
+        if decoded_words[beam][0] != '<EOS>':
+            decoded_words[beam] = evaluate_single_beam(decoder, decoded_words[beam], decoder_input[beam],
+                                                       decoder_hidden, encoder_outputs, max_length, attention)
+
+    return decoded_words
+
+
+def evaluate_single_beam(decoder, decoded_words, decoder_input, decoder_hidden, encoder_outputs, max_length, attention=False):
     for di in range(max_length):
         if attention:
             decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
@@ -232,10 +259,8 @@ def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False
             break
         else:
             decoded_words.append(vocabulary.index2word[ni])
-
         decoder_input = Variable(torch.LongTensor([[ni]]))
         decoder_input = decoder_input.cuda() if use_cuda else decoder_input
-
     return decoded_words
 
 
@@ -244,16 +269,17 @@ def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False
 # input, target, and output to make some subjective quality judgements:
 
 
-def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, max_length, attention=False):
+def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, max_length, attention=False, beams=3):
     for i in range(len(articles)):
         input_sentence = articles[i]
         target_sentence = titles[i]
         print('>', input_sentence)
         print('=', target_sentence)
         output_words = evaluate(vocabulary, encoder, decoder, input_sentence, max_length=max_length,
-                                attention=attention)
-        output_sentence = ' '.join(output_words)
-        print('<', output_sentence)
+                                attention=attention, beams=beams)
+        for beam in output_words:
+            output_sentence = ' '.join(beam)
+            print('<', output_sentence)
         print('')
 
 
@@ -277,9 +303,10 @@ if __name__ == '__main__':
     relative_path = '../data/articles2_nor/all_len_25to80_skip_v3.unk'
     num_articles = -1  # -1 means to take the maximum from the provided source
     num_evaluate = 10
-    iterations = 5000
+    iterations = 200
     start_iter = 1
     total_runtime = 0
+    beams = 5
 
     # Model parameters
     attention = True
@@ -290,13 +317,19 @@ if __name__ == '__main__':
     learning_rate = 0.01
     # TODO: Add teacher forcing here instead of in globals
 
-    save_every = 10  # -1 means never to safe
     save_file = '../saved_models/testing/seq2seq_hidden256_layer1_len80skip.pth.tar'
     best_model_save_file = '../saved_models/testing/seq2seq_hidden256_layer1_len80skip_best.pth.tar'
 
     # When loading a model - the hyper parameters defined here are ignored as they are set in the model
     load_model = False
     load_file = '../saved_models/testing/seq2seq_hidden256_layer1_len80skip.pth.tar'
+
+    save_every = 50  # -1 means never to safe. Must be a multiple of print_every
+    print_every = 10  # Also used for plotting
+
+    if save_every % print_every != 0:
+        raise ValueError("Print_every must be a multiple of save_every, but is currently %d and %d"
+                         % (save_every, print_every))
 
     articles, titles, vocabulary = generate_vocabulary(relative_path, num_articles)
 
@@ -338,9 +371,10 @@ if __name__ == '__main__':
 
     train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations, max_length,
                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file,
-                save_every=save_every, start_iter=start_iter, total_runtime=total_runtime, print_every=10, plot_every=50, attention=attention)
+                save_every=save_every, start_iter=start_iter, total_runtime=total_runtime,
+                print_every=print_every, plot_every=print_every, attention=attention)
     # When saving the best model, the average is counted over "print every", to not have this randomly be very low,
     # we need to have it large enough, I.e. at least 100 ++
 
     evaluate_randomly(test_articles, test_titles, vocabulary, encoder1, decoder1, max_length=max_length,
-                      attention=attention)
+                      attention=attention, beams=beams)
