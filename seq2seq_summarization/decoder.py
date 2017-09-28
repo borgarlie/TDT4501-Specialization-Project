@@ -25,8 +25,9 @@ import torch.nn.functional as F
 
 
 class DecoderRNN(nn.Module):
-    def __init__(self, hidden_size, output_size, n_layers=1):
+    def __init__(self, hidden_size, output_size, n_layers=1, batch_size=1):
         super(DecoderRNN, self).__init__()
+        self.batch_size = batch_size
         self.n_layers = n_layers
         self.hidden_size = hidden_size
 
@@ -35,16 +36,21 @@ class DecoderRNN(nn.Module):
         self.out = nn.Linear(hidden_size, output_size)
         self.softmax = nn.LogSoftmax()
 
-    def forward(self, input, hidden):
-        output = self.embedding(input).view(1, 1, -1)
+    def forward(self, input, hidden, batch_size=1):
+        output = self.embedding(input).view(1, batch_size, self.hidden_size)
         for i in range(self.n_layers):
             output = F.relu(output)
             output, hidden = self.gru(output, hidden)
+            # print(output)
+        # output = self.softmax(self.out(output[0]))
+        # print(output)
+        # exit()
         output = self.softmax(self.out(output[0]))
+        # TODO: Consider doing pack/ unpack as in encoder
         return output, hidden
 
     def init_hidden(self):
-        result = Variable(torch.zeros(1, 1, self.hidden_size))
+        result = Variable(torch.zeros(1, self.batch_size, self.hidden_size))
         if use_cuda:
             return result.cuda()
         else:

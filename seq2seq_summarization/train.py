@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import random
 
 import os
@@ -37,25 +39,18 @@ current_iteration = 0
 # ``teacher_forcing_ratio`` up to use more of it.
 
 
-def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion,
-          max_length, attention=False):
-    encoder_hidden = encoder.init_hidden()
+def train(input_variable, input_lengths, target_variable, target_lengths,
+          encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, attention=False, batch_size=1):
 
     encoder_optimizer.zero_grad()
     decoder_optimizer.zero_grad()
 
-    input_length = input_variable.size()[0]
-    target_length = target_variable.size()[0]
-
-    encoder_outputs = Variable(torch.zeros(max_length, encoder.hidden_size))
-    encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
+    max_target_length = max(target_lengths)
 
     loss = 0
-    for ei in range(input_length):
-        encoder_output, encoder_hidden = encoder(input_variable[ei], encoder_hidden)
-        encoder_outputs[ei] = encoder_output[0][0]
+    encoder_outputs, encoder_hidden = encoder(input_variable, input_lengths, None)
 
-    decoder_input = Variable(torch.LongTensor([[SOS_token]]))
+    decoder_input = Variable(torch.LongTensor([SOS_token] * batch_size))  # does it need an outer [] ?
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
     decoder_hidden = encoder_hidden
@@ -64,18 +59,20 @@ def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, 
 
     if use_teacher_forcing:
         # Teacher forcing: Feed the target as the next input
-        for di in range(target_length):
+        for di in range(max_target_length):
             if attention:
                 decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
                                                                             encoder_outputs)
             else:
-                decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
+                decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, batch_size)
+            # print(target_variable[di])
+            # print(decoder_output)
             loss += criterion(decoder_output, target_variable[di])
             decoder_input = target_variable[di]  # Teacher forcing
 
     else:
         # Without teacher forcing: use its own predictions as the next input
-        for di in range(target_length):
+        for di in range(max_target_length):
             if attention:
                 decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
                                                                             encoder_outputs)
@@ -83,20 +80,22 @@ def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, 
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
             topv, topi = decoder_output.data.topk(1)
             ni = topi[0][0]
+            # TODO: FIX. ni needs to be one dimentional now and not a scalar
+            print(ni)
 
             decoder_input = Variable(torch.LongTensor([[ni]]))
             decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
             loss += criterion(decoder_output, target_variable[di])
-            if ni == EOS_token:
-                break
+            # if ni == EOS_token:
+            #     break
 
     loss.backward()
 
     encoder_optimizer.step()
     decoder_optimizer.step()
 
-    return loss.data[0] / target_length
+    return loss.data[0]  # WHAT THE FUCK
 
 
 ######################################################################
@@ -111,9 +110,9 @@ def train(input_variable, target_variable, encoder, decoder, encoder_optimizer, 
 # of examples, time so far, estimated time) and average loss.
 #
 
-def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_length,
+def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters,
                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file, save_every=-1,
-                start_iter=1, total_runtime=0, print_every=1000, plot_every=100, attention=False):
+                start_iter=1, total_runtime=0, print_every=1000, plot_every=100, attention=False, batch_size=1):
     start = time.time()
     plot_losses = []
     print_loss_total = 0  # Reset every print_every
@@ -125,12 +124,17 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
     print("Starting training", flush=True)
 
     for itr in range(start_iter, n_iters + 1):
-        random_number = random.randint(0, len(articles) - 1)
-        input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
-                                                              vocabulary)
+        # random_number = random.randint(0, len(articles) - 1)
+        # input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
+        #                                                       vocabulary)
+        input_variable, input_lengths, target_variable, target_lengths = random_batch(batch_size, vocabulary, articles,
+                                                                                      titles)
 
-        loss = train(input_variable, target_variable, encoder, decoder, encoder_optimizer, decoder_optimizer,
-                     criterion, max_length=max_length, attention=attention)
+        # max_length = max(input_lengths)
+
+        loss = train(input_variable, input_lengths, target_variable, target_lengths,
+                     encoder, decoder, encoder_optimizer, decoder_optimizer,
+                     criterion, attention=attention, batch_size=batch_size)
         print_loss_total += loss
         plot_loss_total += loss
 
@@ -172,7 +176,7 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
                 'optimizer_state_decoder': decoder_optimizer.state_dict()
             }, save_file)
 
-    show_plot(plot_losses)
+    # show_plot(plot_losses)
 
 
 ######################################################################
@@ -189,16 +193,18 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
 def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False, beams=3):
     input_variable = variable_from_sentence(vocabulary, sentence)
     input_length = input_variable.size()[0]
-    encoder_hidden = encoder.init_hidden()
+    # encoder_hidden = encoder.init_hidden()
+    #
+    # encoder_outputs = Variable(torch.zeros(max_length, encoder.hidden_size))
+    # encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
 
-    encoder_outputs = Variable(torch.zeros(max_length, encoder.hidden_size))
-    encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
+    # for ei in range(input_length):
+    #     encoder_output, encoder_hidden = encoder(input_variable[ei], encoder_hidden)
+    #     encoder_outputs[ei] = encoder_outputs[ei] + encoder_output[0][0]
 
-    for ei in range(input_length):
-        encoder_output, encoder_hidden = encoder(input_variable[ei], encoder_hidden)
-        encoder_outputs[ei] = encoder_outputs[ei] + encoder_output[0][0]
+    encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
 
-    decoder_input = Variable(torch.LongTensor([[SOS_token]]))  # SOS
+    decoder_input = Variable(torch.LongTensor([SOS_token]))  # SOS
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
     decoder_hidden = encoder_hidden
@@ -208,7 +214,7 @@ def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False
     if attention:
         decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
     else:
-        decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
+        decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
     topv, topi = decoder_output.data.topk(beams)  # standard was 1
     decoder_input = []
     for i in range(beams):
@@ -284,6 +290,44 @@ def load_state(filename):
         raise FileNotFoundError
 
 
+def random_batch(batch_size, vocabulary, articles, titles):
+    input_seqs = []
+    target_seqs = []
+
+    # Choose random pairs
+    for i in range(batch_size):
+        # pair = random.choice(pairs)
+        random_number = random.randint(0, len(articles) - 1)
+        # input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
+        #                                                       vocabulary)
+        input_variable = indexes_from_sentence(vocabulary, articles[random_number])
+        target_variable = indexes_from_sentence(vocabulary, titles[random_number])
+        input_seqs.append(input_variable)
+        target_seqs.append(target_variable)
+
+    # Zip into pairs, sort by length (descending), unzip
+    seq_pairs = sorted(zip(input_seqs, target_seqs), key=lambda p: len(p[0]), reverse=True)
+    input_seqs, target_seqs = zip(*seq_pairs)
+
+    # For input and target sequences, get array of lengths and pad with 0s to max length
+    input_lengths = [len(s) for s in input_seqs]
+    input_padded = [pad_seq(s, max(input_lengths)) for s in input_seqs]
+    target_lengths = [len(s) for s in target_seqs]
+    target_padded = [pad_seq(s, max(target_lengths)) for s in target_seqs]
+
+    # Turn padded arrays into (batch_size x max_len) tensors, transpose into (max_len x batch_size)
+    input_var = Variable(torch.LongTensor(input_padded)).transpose(0, 1)
+    target_var = Variable(torch.LongTensor(target_padded)).transpose(0, 1)
+
+    # print(input_var)
+
+    if use_cuda:
+        input_var = input_var.cuda()
+        target_var = target_var.cuda()
+
+    return input_var, input_lengths, target_var, target_lengths
+
+
 if __name__ == '__main__':
 
     print(use_cuda, flush=True)
@@ -291,20 +335,23 @@ if __name__ == '__main__':
     # Train and evaluate parameters
     relative_path = '../data/articles2_nor/25to100'
     num_articles = -1  # -1 means to take the maximum from the provided source
-    num_evaluate = 300
-    iterations = 150000
+    num_evaluate = 20
+    iterations = 9400
     start_iter = 1
     total_runtime = 0
-    beams = 5
+    beams = 2
+    batch_size = 1
 
     # Model parameters
     attention = False
     hidden_size = 128
-    max_length = 1 + 100  # WOWSKI ... 1029
+    max_length = 1 + 100  # WOWSKI ... 1029 TODO: This should probably be removed fully
     n_layers = 1
     dropout_p = 0.1
     learning_rate = 0.01
     # TODO: Add teacher forcing here instead of in globals
+    # TODO: Fix teacher forcing
+    # TODO: Fix attention decoder
 
     save_file = '../saved_models/testing/test1.pth.tar'
     best_model_save_file = '../saved_models/testing/test1_best.pth.tar'
@@ -331,13 +378,14 @@ if __name__ == '__main__':
     test_articles = articles[train_length:train_length + test_length]
     test_titles = titles[train_length:train_length + test_length]
 
-    encoder1 = EncoderRNN(vocabulary.n_words, hidden_size, n_layers=n_layers)
+    encoder1 = EncoderRNN(vocabulary.n_words, hidden_size, n_layers=n_layers, batch_size=batch_size)
 
     if attention:
-        decoder1 = AttnDecoderRNN(hidden_size, vocabulary.n_words, max_length=max_length, n_layers=n_layers,
-                                  dropout_p=dropout_p)
+        pass
+        # decoder1 = AttnDecoderRNN(hidden_size, vocabulary.n_words, max_length=max_length, n_layers=n_layers,
+        #                           dropout_p=dropout_p)
     else:
-        decoder1 = DecoderRNN(hidden_size, vocabulary.n_words, n_layers=n_layers)
+        decoder1 = DecoderRNN(hidden_size, vocabulary.n_words, n_layers=n_layers, batch_size=batch_size)
 
     if use_cuda:
         encoder1 = encoder1.cuda()
@@ -359,10 +407,10 @@ if __name__ == '__main__':
             print("No file found: exiting")
             exit()
 
-    train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations, max_length,
+    train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations,
                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file,
                 save_every=save_every, start_iter=start_iter, total_runtime=total_runtime,
-                print_every=print_every, plot_every=print_every, attention=attention)
+                print_every=print_every, plot_every=print_every, attention=attention, batch_size=batch_size)
     # When saving the best model, the average is counted over "print every", to not have this randomly be very low,
     # we need to have it large enough, I.e. at least 100 ++
 

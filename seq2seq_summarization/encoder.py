@@ -12,24 +12,21 @@ from globals import *
 
 
 class EncoderRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, n_layers=1):
+    def __init__(self, input_size, hidden_size, n_layers=1, batch_size=1):
         super(EncoderRNN, self).__init__()
+        self.batch_size = batch_size
         self.n_layers = n_layers
         self.hidden_size = hidden_size
 
         self.embedding = nn.Embedding(input_size, hidden_size)
-        self.gru = nn.GRU(hidden_size, hidden_size)
+        self.gru = nn.GRU(hidden_size, hidden_size, n_layers)
 
-    def forward(self, input, hidden):
-        embedded = self.embedding(input).view(1, 1, -1)
-        output = embedded
-        for i in range(self.n_layers):
-            output, hidden = self.gru(output, hidden)
-        return output, hidden
-
-    def init_hidden(self):
-        result = Variable(torch.zeros(1, 1, self.hidden_size))
-        if use_cuda:
-            return result.cuda()
-        else:
-            return result
+    def forward(self, input, input_lengths, hidden):
+        embedded = self.embedding(input)
+        # print(input)
+        # print(input_lengths)
+        outputs = nn.utils.rnn.pack_padded_sequence(embedded, input_lengths)  # packed
+        # for i in range(self.n_layers):
+        outputs, hidden = self.gru(outputs, hidden)
+        outputs, output_lengths = nn.utils.rnn.pad_packed_sequence(outputs)  # unpack (back to padded)
+        return outputs, hidden

@@ -2,15 +2,16 @@ import torch
 from torch.autograd import Variable
 import time
 import math
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+# import matplotlib.pyplot as plt
+# import matplotlib.ticker as ticker
 
-SOS_token = 0
-EOS_token = 1
+PAD_token = 0
+SOS_token = 1
+EOS_token = 2
 
 use_cuda = torch.cuda.is_available()
 
-teacher_forcing_ratio = 0.5
+teacher_forcing_ratio = 1.0
 
 view_plot = False
 
@@ -25,10 +26,17 @@ single_char = False
 # EOS token to both sequences.
 
 
+# Pad a with the PAD symbol
+def pad_seq(seq, max_length):
+    # print(seq)
+    seq += [PAD_token for i in range(max_length - len(seq))]
+    return seq
+
+
 def indexes_from_sentence(vocabulary, sentence):
     if single_char:
-        return [vocabulary.word2index[word] for word in sentence]
-    return [vocabulary.word2index[word] for word in sentence.split(' ')]
+        return [vocabulary.word2index[word] for word in sentence] + [EOS_token]
+    return [vocabulary.word2index[word] for word in sentence.split(' ')] + [EOS_token]
 
 
 def variable_from_sentence(vocabulary, sentence):
