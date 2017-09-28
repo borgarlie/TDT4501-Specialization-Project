@@ -12,7 +12,7 @@ use_cuda = torch.cuda.is_available()
 
 teacher_forcing_ratio = 0.5
 
-view_plot = True
+view_plot = False
 
 single_char = False
 
@@ -74,12 +74,12 @@ def time_since(since, percent, total_runtime):
 #
 
 
-def show_plot(points):
-    plt.figure()
-    fig, ax = plt.subplots()
-    # this locator puts ticks at regular intervals
-    loc = ticker.MultipleLocator(base=0.2)
-    ax.yaxis.set_major_locator(loc)
-    plt.plot(points)
-    if view_plot:
-        plt.show()
+# def show_plot(points):
+#     plt.figure()
+#     fig, ax = plt.subplots()
+#     # this locator puts ticks at regular intervals
+#     loc = ticker.MultipleLocator(base=0.2)
+#     ax.yaxis.set_major_locator(loc)
+#     plt.plot(points)
+#     if view_plot:
+#         plt.show()

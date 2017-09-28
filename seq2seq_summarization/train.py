@@ -1,14 +1,12 @@
-from __future__ import unicode_literals, print_function, division
 import random
-import shutil
 
 import os
 from torch import optim
-import seq2seq_summarization.preprocess_single_char as preprocess_single_char
-import seq2seq_summarization.preprocess as preprocess
-from seq2seq_summarization.encoder import *
-from seq2seq_summarization.decoder import *
-from seq2seq_summarization.globals import *
+import preprocess_single_char as preprocess_single_char
+import preprocess as preprocess
+from encoder import *
+from decoder import *
+from globals import *
 
 current_iteration = 0
 
@@ -124,7 +122,7 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
 
     criterion = nn.NLLLoss()
 
-    print("Starting training")
+    print("Starting training", flush=True)
 
     for itr in range(start_iter, n_iters + 1):
         random_number = random.randint(0, len(articles) - 1)
@@ -141,10 +139,10 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
             print_loss_total = 0
             progress, total_runtime = time_since(start, itr / n_iters, total_runtime)
             start = time.time()
-            print('%s (%d %d%%) %.4f' % (progress, itr, itr / n_iters * 100, print_loss_avg))
+            print('%s (%d %d%%) %.4f' % (progress, itr, itr / n_iters * 100, print_loss_avg), flush=True)
             if print_loss_avg < lowest_loss:
                 lowest_loss = print_loss_avg
-                print(" ^ Lowest loss so far")
+                print(" ^ Lowest loss so far", flush=True)
                 if save_every > 0:
                     save_state({
                         'iteration': itr + 1,
@@ -259,8 +257,8 @@ def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, max_length
     for i in range(len(articles)):
         input_sentence = articles[i]
         target_sentence = titles[i]
-        print('>', input_sentence)
-        print('=', target_sentence)
+        print('>', input_sentence, flush=True)
+        print('=', target_sentence, flush=True)
         output_words = evaluate(vocabulary, encoder, decoder, input_sentence, max_length=max_length,
                                 attention=attention, beams=beams)
         for beam in output_words:
@@ -268,8 +266,8 @@ def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, max_length
                 output_sentence = ''.join(beam)  # For single characters
             else:
                 output_sentence = ' '.join(beam)  # for words
-            print('<', output_sentence)
-        print('')
+            print('<', output_sentence, flush=True)
+        print('', flush=True)
 
 
 def save_state(state, filename):
@@ -288,32 +286,34 @@ def load_state(filename):
 
 if __name__ == '__main__':
 
+    print(use_cuda, flush=True)
+
     # Train and evaluate parameters
-    relative_path = '../data/articles2_nor/all_len_25to80_skip_v3.unk'
+    relative_path = '../data/articles2_nor/25to100'
     num_articles = -1  # -1 means to take the maximum from the provided source
-    num_evaluate = 10
-    iterations = 100
+    num_evaluate = 300
+    iterations = 150000
     start_iter = 1
     total_runtime = 0
-    beams = 3
+    beams = 5
 
     # Model parameters
-    attention = True
+    attention = False
     hidden_size = 128
-    max_length = 1 + 1029  # WOWSKI ... 1029
+    max_length = 1 + 100  # WOWSKI ... 1029
     n_layers = 1
     dropout_p = 0.1
     learning_rate = 0.01
     # TODO: Add teacher forcing here instead of in globals
 
-    save_file = '../saved_models/testing/seq2seq_char_hidden128_layer1_len80.pth.tar'
-    best_model_save_file = '../saved_models/testing/seq2seq_char_hidden128_layer1_len80_best.pth.tar'
+    save_file = '../saved_models/testing/test1.pth.tar'
+    best_model_save_file = '../saved_models/testing/test1_best.pth.tar'
 
     # When loading a model - the hyper parameters defined here are ignored as they are set in the model
     load_model = False
     load_file = '../saved_models/testing/seq2seq_char_hidden128_layer1_len80.pth.tar'
 
-    save_every = 50  # -1 means never to safe. Must be a multiple of print_every
+    save_every = 1000  # -1 means never to safe. Must be a multiple of print_every
     print_every = 10  # Also used for plotting
 
     if save_every % print_every != 0:
