@@ -4,7 +4,8 @@ import shutil
 
 import os
 from torch import optim
-from seq2seq_summarization.preprocess import *
+import seq2seq_summarization.preprocess_single_char as preprocess_single_char
+import seq2seq_summarization.preprocess as preprocess
 from seq2seq_summarization.encoder import *
 from seq2seq_summarization.decoder import *
 from seq2seq_summarization.globals import *
@@ -125,58 +126,43 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
 
     print("Starting training")
 
-    try:
-        for itr in range(start_iter, n_iters + 1):
-            random_number = random.randint(0, len(articles) - 1)
-            input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
-                                                                  vocabulary)
+    for itr in range(start_iter, n_iters + 1):
+        random_number = random.randint(0, len(articles) - 1)
+        input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
+                                                              vocabulary)
 
-            loss = train(input_variable, target_variable, encoder, decoder, encoder_optimizer, decoder_optimizer,
-                         criterion, max_length=max_length, attention=attention)
-            print_loss_total += loss
-            plot_loss_total += loss
+        loss = train(input_variable, target_variable, encoder, decoder, encoder_optimizer, decoder_optimizer,
+                     criterion, max_length=max_length, attention=attention)
+        print_loss_total += loss
+        plot_loss_total += loss
 
-            if itr % print_every == 0:
-                print_loss_avg = print_loss_total / print_every
-                print_loss_total = 0
-                progress, total_runtime = time_since(start, itr / n_iters, total_runtime)
-                start = time.time()
-                print('%s (%d %d%%) %.4f' % (progress, itr, itr / n_iters * 100, print_loss_avg))
-                if print_loss_avg < lowest_loss:
-                    lowest_loss = print_loss_avg
-                    print(" ^ Lowest loss so far")
-                    if save_every > 0:
-                        save_state({
-                            'iteration': itr + 1,
-                            'runtime': total_runtime,
-                            'attention': attention,
-                            'max_length': max_length,
-                            'model_state_encoder': encoder1.state_dict(),
-                            'model_state_decoder': decoder1.state_dict(),
-                            'optimizer_state_encoder': encoder_optimizer.state_dict(),
-                            'optimizer_state_decoder': decoder_optimizer.state_dict()
-                        }, best_model_save_file)
-
-            if itr % plot_every == 0:
-                plot_loss_avg = plot_loss_total / plot_every
-                plot_losses.append(plot_loss_avg)
-                plot_loss_total = 0
-
-            if save_every > 0 and itr % save_every == 0:
-                save_state({
-                    'iteration': itr+1,
-                    'runtime': total_runtime,
-                    'attention': attention,
-                    'max_length': max_length,
-                    'model_state_encoder': encoder1.state_dict(),
-                    'model_state_decoder': decoder1.state_dict(),
-                    'optimizer_state_encoder': encoder_optimizer.state_dict(),
-                    'optimizer_state_decoder': decoder_optimizer.state_dict()
-                }, save_file)
-    except KeyboardInterrupt:
-        if save_file:
-            print("Interrupted: Saving state")
+        if itr % print_every == 0:
+            print_loss_avg = print_loss_total / print_every
+            print_loss_total = 0
             progress, total_runtime = time_since(start, itr / n_iters, total_runtime)
+            start = time.time()
+            print('%s (%d %d%%) %.4f' % (progress, itr, itr / n_iters * 100, print_loss_avg))
+            if print_loss_avg < lowest_loss:
+                lowest_loss = print_loss_avg
+                print(" ^ Lowest loss so far")
+                if save_every > 0:
+                    save_state({
+                        'iteration': itr + 1,
+                        'runtime': total_runtime,
+                        'attention': attention,
+                        'max_length': max_length,
+                        'model_state_encoder': encoder1.state_dict(),
+                        'model_state_decoder': decoder1.state_dict(),
+                        'optimizer_state_encoder': encoder_optimizer.state_dict(),
+                        'optimizer_state_decoder': decoder_optimizer.state_dict()
+                    }, best_model_save_file)
+
+        if itr % plot_every == 0:
+            plot_loss_avg = plot_loss_total / plot_every
+            plot_losses.append(plot_loss_avg)
+            plot_loss_total = 0
+
+        if save_every > 0 and itr % save_every == 0:
             save_state({
                 'iteration': itr+1,
                 'runtime': total_runtime,
@@ -278,7 +264,10 @@ def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, max_length
         output_words = evaluate(vocabulary, encoder, decoder, input_sentence, max_length=max_length,
                                 attention=attention, beams=beams)
         for beam in output_words:
-            output_sentence = ' '.join(beam)
+            if single_char:
+                output_sentence = ''.join(beam)  # For single characters
+            else:
+                output_sentence = ' '.join(beam)  # for words
             print('<', output_sentence)
         print('')
 
@@ -303,26 +292,26 @@ if __name__ == '__main__':
     relative_path = '../data/articles2_nor/all_len_25to80_skip_v3.unk'
     num_articles = -1  # -1 means to take the maximum from the provided source
     num_evaluate = 10
-    iterations = 200
+    iterations = 100
     start_iter = 1
     total_runtime = 0
-    beams = 5
+    beams = 3
 
     # Model parameters
     attention = True
     hidden_size = 128
-    max_length = 1 + 100
+    max_length = 1 + 1029  # WOWSKI ... 1029
     n_layers = 1
     dropout_p = 0.1
     learning_rate = 0.01
     # TODO: Add teacher forcing here instead of in globals
 
-    save_file = '../saved_models/testing/seq2seq_hidden256_layer1_len80skip.pth.tar'
-    best_model_save_file = '../saved_models/testing/seq2seq_hidden256_layer1_len80skip_best.pth.tar'
+    save_file = '../saved_models/testing/seq2seq_char_hidden128_layer1_len80.pth.tar'
+    best_model_save_file = '../saved_models/testing/seq2seq_char_hidden128_layer1_len80_best.pth.tar'
 
     # When loading a model - the hyper parameters defined here are ignored as they are set in the model
     load_model = False
-    load_file = '../saved_models/testing/seq2seq_hidden256_layer1_len80skip.pth.tar'
+    load_file = '../saved_models/testing/seq2seq_char_hidden128_layer1_len80.pth.tar'
 
     save_every = 50  # -1 means never to safe. Must be a multiple of print_every
     print_every = 10  # Also used for plotting
@@ -331,7 +320,8 @@ if __name__ == '__main__':
         raise ValueError("Print_every must be a multiple of save_every, but is currently %d and %d"
                          % (save_every, print_every))
 
-    articles, titles, vocabulary = generate_vocabulary(relative_path, num_articles)
+    pre = preprocess_single_char if single_char else preprocess
+    articles, titles, vocabulary = pre.generate_vocabulary(relative_path, num_articles)
 
     train_length = num_articles - num_evaluate
     test_length = num_evaluate

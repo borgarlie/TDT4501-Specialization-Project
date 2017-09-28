@@ -14,6 +14,8 @@ teacher_forcing_ratio = 0.5
 
 view_plot = True
 
+single_char = False
+
 # Preparing Training Data
 # -----------------------
 #
@@ -24,6 +26,8 @@ view_plot = True
 
 
 def indexes_from_sentence(vocabulary, sentence):
+    if single_char:
+        return [vocabulary.word2index[word] for word in sentence]
     return [vocabulary.word2index[word] for word in sentence.split(' ')]
 
 
