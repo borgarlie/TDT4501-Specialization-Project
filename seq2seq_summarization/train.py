@@ -31,7 +31,7 @@ def train(input_variable, input_lengths, target_variable, target_lengths,
         for di in range(max_target_length):
             if attention:
                 decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
-                                                                            encoder_outputs)
+                                                                            encoder_outputs, batch_size)
             else:
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, batch_size)
             loss += criterion(decoder_output, target_variable[di])
@@ -41,7 +41,7 @@ def train(input_variable, input_lengths, target_variable, target_lengths,
         for di in range(max_target_length):
             if attention:
                 decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
-                                                                            encoder_outputs)
+                                                                            encoder_outputs, batch_size)
             else:
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, batch_size)
             topv, topi = decoder_output.data.topk(1)
@@ -58,7 +58,7 @@ def train(input_variable, input_lengths, target_variable, target_lengths,
 
 
 # Train for a number of epochs
-def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters,
+def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_length,
                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file, save_every=-1,
                 start_iter=1, total_runtime=0, print_every=1000, plot_every=100, attention=False, batch_size=1):
 
@@ -80,7 +80,7 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters,
         # input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
         #                                                       vocabulary)
         input_variable, input_lengths, target_variable, target_lengths = random_batch(batch_size, vocabulary, articles,
-                                                                                      titles)
+                                                                                      titles, max_length, attention)
 
         loss = train(input_variable, input_lengths, target_variable, target_lengths,
                      encoder, decoder, encoder_optimizer, decoder_optimizer,
@@ -130,8 +130,15 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters,
 
 
 def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False, beams=3):
-    input_variable = variable_from_sentence(vocabulary, sentence)
-    input_length = input_variable.size()[0]
+    if attention:
+        input_variable = indexes_from_sentence(vocabulary, sentence)
+        input_variable = pad_seq(input_variable, max_length)
+        input_length = max_length
+        input_variable = Variable(torch.LongTensor(input_variable)).unsqueeze(1)
+        input_variable = input_variable.cuda() if use_cuda else input_variable
+    else:
+        input_variable = variable_from_sentence(vocabulary, sentence)
+        input_length = input_variable.size()[0]
 
     encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
 
@@ -145,7 +152,7 @@ def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False
 
     # Hard coding the first round in the loop to generate a beam search from the top k candidates of the first word
     if attention:
-        decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
+        decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs, 1)
     else:
         # batch_size = 1 as we do not care about batching during evaluation
         decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
@@ -173,9 +180,9 @@ def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False
 def evaluate_single_beam(decoder, decoded_words, decoder_input, decoder_hidden, encoder_outputs, max_length, attention=False):
     for di in range(max_length):
         if attention:
-            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
+            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs, 1)
         else:
-            decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
+            decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
         topv, topi = decoder_output.data.topk(1)
         ni = topi[0][0]
         if ni == EOS_token:
@@ -185,6 +192,7 @@ def evaluate_single_beam(decoder, decoded_words, decoder_input, decoder_hidden, 
             decoded_words.append(vocabulary.index2word[ni])
         decoder_input = Variable(torch.LongTensor([[ni]]))
         decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+
     return decoded_words
 
 
@@ -220,7 +228,7 @@ def load_state(filename):
 
 
 # TODO: FIx so its not as random.. just shuffled
-def random_batch(batch_size, vocabulary, articles, titles):
+def random_batch(batch_size, vocabulary, articles, titles, max_length, attention=False):
     input_seqs = []
     target_seqs = []
 
@@ -237,10 +245,16 @@ def random_batch(batch_size, vocabulary, articles, titles):
     input_seqs, target_seqs = zip(*seq_pairs)
 
     # For input and target sequences, get array of lengths and pad with 0s to max length
-    input_lengths = [len(s) for s in input_seqs]
-    input_padded = [pad_seq(s, max(input_lengths)) for s in input_seqs]
-    target_lengths = [len(s) for s in target_seqs]
-    target_padded = [pad_seq(s, max(target_lengths)) for s in target_seqs]
+    if attention:
+        input_lengths = [max_length for s in input_seqs]
+        input_padded = [pad_seq(s, max_length) for s in input_seqs]
+        target_lengths = [len(s) for s in target_seqs]
+        target_padded = [pad_seq(s, max_length) for s in target_seqs]
+    else:
+        input_lengths = [len(s) for s in input_seqs]
+        input_padded = [pad_seq(s, max(input_lengths)) for s in input_seqs]
+        target_lengths = [len(s) for s in target_seqs]
+        target_padded = [pad_seq(s, max(target_lengths)) for s in target_seqs]
 
     # Turn padded arrays into (batch_size x max_len) tensors, transpose into (max_len x batch_size)
     input_var = Variable(torch.LongTensor(input_padded)).transpose(0, 1)
@@ -263,17 +277,16 @@ if __name__ == '__main__':
     # Train and evaluate parameters
     relative_path = '../data/articles2_nor/25to100'
     num_articles = -1  # -1 means to take the maximum from the provided source
-    num_evaluate = 10
-    iterations = 100
+    num_evaluate = 300
+    iterations = 5000
     start_iter = 1
     total_runtime = 0
-    beams = 3
-    batch_size = 4
+    beams = 5
+    batch_size = 16
 
     # Model parameters
-    attention = False
+    attention = True
     hidden_size = 128
-    max_length = 1 + 100  # TODO: This should probably be removed fully
     n_layers = 1
     dropout_p = 0.1
     learning_rate = 0.01
@@ -288,7 +301,7 @@ if __name__ == '__main__':
     load_file = '../saved_models/testing/test3.pth.tar'
 
     save_every = 1000  # -1 means never to safe. Must be a multiple of print_every
-    print_every = 10  # Also used for plotting
+    print_every = 200  # Also used for plotting
 
     if save_every % print_every != 0:
         raise ValueError("Print_every must be a multiple of save_every, but is currently %d and %d"
@@ -307,9 +320,11 @@ if __name__ == '__main__':
 
     encoder1 = EncoderRNN(vocabulary.n_words, hidden_size, n_layers=n_layers, batch_size=batch_size)
 
+    max_length = max(len(article.split(' ')) for article in articles) + 1
+
     if attention:
         decoder1 = AttnDecoderRNN(hidden_size, vocabulary.n_words, max_length=max_length, n_layers=n_layers,
-                                  dropout_p=dropout_p)
+                                  dropout_p=dropout_p, batch_size=batch_size)
     else:
         decoder1 = DecoderRNN(hidden_size, vocabulary.n_words, n_layers=n_layers, batch_size=batch_size)
 
@@ -328,12 +343,12 @@ if __name__ == '__main__':
             decoder1.load_state_dict(model_state_decoder)
             encoder_optimizer.load_state_dict(optimizer_state_encoder)
             decoder_optimizer.load_state_dict(optimizer_state_decoder)
-            print("Resuming training from iteration: %d" % start_iter)
+            print("Resuming training from iteration: %d" % start_iter, flush=True)
         except FileNotFoundError:
-            print("No file found: exiting")
+            print("No file found: exiting", flush=True)
             exit()
 
-    train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations,
+    train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations, max_length,
                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file,
                 save_every=save_every, start_iter=start_iter, total_runtime=total_runtime,
                 print_every=print_every, plot_every=print_every, attention=attention, batch_size=batch_size)
