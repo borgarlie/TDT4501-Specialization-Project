@@ -23,10 +23,7 @@ class EncoderRNN(nn.Module):
 
     def forward(self, input, input_lengths, hidden):
         embedded = self.embedding(input)
-        # print(input)
-        # print(input_lengths)
         outputs = nn.utils.rnn.pack_padded_sequence(embedded, input_lengths)  # packed
-        # for i in range(self.n_layers):
         outputs, hidden = self.gru(outputs, hidden)
         outputs, output_lengths = nn.utils.rnn.pad_packed_sequence(outputs)  # unpack (back to padded)
         return outputs, hidden

@@ -41,12 +41,7 @@ class DecoderRNN(nn.Module):
         for i in range(self.n_layers):
             output = F.relu(output)
             output, hidden = self.gru(output, hidden)
-            # print(output)
-        # output = self.softmax(self.out(output[0]))
-        # print(output)
-        # exit()
         output = self.softmax(self.out(output[0]))
-        # TODO: Consider doing pack/ unpack as in encoder
         return output, hidden
 
     def init_hidden(self):

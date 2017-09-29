@@ -11,7 +11,7 @@ EOS_token = 2
 
 use_cuda = torch.cuda.is_available()
 
-teacher_forcing_ratio = 1.0
+teacher_forcing_ratio = 0.5
 
 view_plot = False
 

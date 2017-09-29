@@ -1,7 +1,4 @@
-# -*- coding: utf-8 -*-
-
 import random
-
 import os
 from torch import optim
 import preprocess_single_char as preprocess_single_char
@@ -11,35 +8,8 @@ from decoder import *
 from globals import *
 import sys
 
-current_iteration = 0
 
-######################################################################
-# Training the Model
-# ------------------
-#
-# To train we run the input sentence through the encoder, and keep track
-# of every output and the latest hidden state. Then the decoder is given
-# the ``<SOS>`` token as its first input, and the last hidden state of the
-# encoder as its first hidden state.
-#
-# "Teacher forcing" is the concept of using the real target outputs as
-# each next input, instead of using the decoder's guess as the next input.
-# Using teacher forcing causes it to converge faster but `when the trained
-# network is exploited, it may exhibit
-# instability <http://minds.jacobs-university.de/sites/default/files/uploads/papers/ESNTutorialRev.pdf>`__.
-#
-# You can observe outputs of teacher-forced networks that read with
-# coherent grammar but wander far from the correct translation -
-# intuitively it has learned to represent the output grammar and can "pick
-# up" the meaning once the teacher tells it the first few words, but it
-# has not properly learned how to create the sentence from the translation
-# in the first place.
-#
-# Because of the freedom PyTorch's autograd gives us, we can randomly
-# choose to use teacher forcing or not with a simple if statement. Turn
-# ``teacher_forcing_ratio`` up to use more of it.
-
-
+# Train one batch
 def train(input_variable, input_lengths, target_variable, target_lengths,
           encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, attention=False, batch_size=1):
 
@@ -47,13 +17,11 @@ def train(input_variable, input_lengths, target_variable, target_lengths,
     decoder_optimizer.zero_grad()
 
     max_target_length = max(target_lengths)
-
     loss = 0
     encoder_outputs, encoder_hidden = encoder(input_variable, input_lengths, None)
 
     decoder_input = Variable(torch.LongTensor([SOS_token] * batch_size))  # does it need an outer [] ?
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
-
     decoder_hidden = encoder_hidden
 
     use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
@@ -66,11 +34,8 @@ def train(input_variable, input_lengths, target_variable, target_lengths,
                                                                             encoder_outputs)
             else:
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, batch_size)
-            # print(target_variable[di])
-            # print(decoder_output)
             loss += criterion(decoder_output, target_variable[di])
             decoder_input = target_variable[di]  # Teacher forcing
-
     else:
         # Without teacher forcing: use its own predictions as the next input
         for di in range(max_target_length):
@@ -78,42 +43,25 @@ def train(input_variable, input_lengths, target_variable, target_lengths,
                 decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
                                                                             encoder_outputs)
             else:
-                decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
+                decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, batch_size)
             topv, topi = decoder_output.data.topk(1)
-            ni = topi[0][0]
-            # TODO: FIX. ni needs to be one dimentional now and not a scalar
-            print(ni)
-
-            decoder_input = Variable(torch.LongTensor([[ni]]))
-            decoder_input = decoder_input.cuda() if use_cuda else decoder_input
-
+            ni = topi  # next input, batch of top softmax scores
+            decoder_input = Variable(torch.cuda.LongTensor(ni)) if use_cuda else Variable(torch.LongTensor(ni))
             loss += criterion(decoder_output, target_variable[di])
-            # if ni == EOS_token:
-            #     break
 
     loss.backward()
 
     encoder_optimizer.step()
     decoder_optimizer.step()
 
-    return loss.data[0]  # WHAT THE FUCK
+    return loss.data[0]
 
 
-######################################################################
-# The whole training process looks like this:
-#
-# -  Start a timer
-# -  Initialize optimizers and criterion
-# -  Create set of training pairs
-# -  Start empty losses array for plotting
-#
-# Then we call ``train`` many times and occasionally print the progress (%
-# of examples, time so far, estimated time) and average loss.
-#
-
+# Train for a number of epochs
 def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters,
                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file, save_every=-1,
                 start_iter=1, total_runtime=0, print_every=1000, plot_every=100, attention=False, batch_size=1):
+
     start = time.time()
     plot_losses = []
     print_loss_total = 0  # Reset every print_every
@@ -124,14 +72,15 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters,
 
     print("Starting training", flush=True)
 
+    # TODO: Fix shuffle instead of random (so we take every input as many times)
+    # TODO: Should we fix such that the input_num_articles % batch_size == 0, and put the remaining in evaluation ?
+    # TODO: Rename iterations to epochs
     for itr in range(start_iter, n_iters + 1):
         # random_number = random.randint(0, len(articles) - 1)
         # input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
         #                                                       vocabulary)
         input_variable, input_lengths, target_variable, target_lengths = random_batch(batch_size, vocabulary, articles,
                                                                                       titles)
-
-        # max_length = max(input_lengths)
 
         loss = train(input_variable, input_lengths, target_variable, target_lengths,
                      encoder, decoder, encoder_optimizer, decoder_optimizer,
@@ -180,43 +129,27 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters,
     # show_plot(plot_losses)
 
 
-######################################################################
-# Evaluation
-# ==========
-#
-# Evaluation is mostly the same as training, but there are no targets so
-# we simply feed the decoder's predictions back to itself for each step.
-# Every time it predicts a word we add it to the output string, and if it
-# predicts the EOS token we stop there. We also store the decoder's
-# attention outputs for display later.
-
-
 def evaluate(vocabulary, encoder, decoder, sentence, max_length, attention=False, beams=3):
     input_variable = variable_from_sentence(vocabulary, sentence)
     input_length = input_variable.size()[0]
-    # encoder_hidden = encoder.init_hidden()
-    #
-    # encoder_outputs = Variable(torch.zeros(max_length, encoder.hidden_size))
-    # encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
-
-    # for ei in range(input_length):
-    #     encoder_output, encoder_hidden = encoder(input_variable[ei], encoder_hidden)
-    #     encoder_outputs[ei] = encoder_outputs[ei] + encoder_output[0][0]
 
     encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
 
-    decoder_input = Variable(torch.LongTensor([SOS_token]))  # SOS
+    decoder_input = Variable(torch.LongTensor([SOS_token]))
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 
     decoder_hidden = encoder_hidden
     decoded_words = []
 
+    # TODO: Fix tree search with multiplicative pruning
+
     # Hard coding the first round in the loop to generate a beam search from the top k candidates of the first word
     if attention:
         decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
     else:
+        # batch_size = 1 as we do not care about batching during evaluation
         decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
-    topv, topi = decoder_output.data.topk(beams)  # standard was 1
+    topv, topi = decoder_output.data.topk(beams)
     decoder_input = []
     for i in range(beams):
         decoded_words.append([])
@@ -255,11 +188,6 @@ def evaluate_single_beam(decoder, decoded_words, decoder_input, decoder_hidden, 
     return decoded_words
 
 
-######################################################################
-# We can evaluate random sentences from the training set and print out the
-# input, target, and output to make some subjective quality judgements:
-
-
 def evaluate_randomly(articles, titles, vocabulary, encoder, decoder, max_length, attention=False, beams=3):
     for i in range(len(articles)):
         input_sentence = articles[i]
@@ -291,16 +219,14 @@ def load_state(filename):
         raise FileNotFoundError
 
 
+# TODO: FIx so its not as random.. just shuffled
 def random_batch(batch_size, vocabulary, articles, titles):
     input_seqs = []
     target_seqs = []
 
     # Choose random pairs
     for i in range(batch_size):
-        # pair = random.choice(pairs)
         random_number = random.randint(0, len(articles) - 1)
-        # input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
-        #                                                       vocabulary)
         input_variable = indexes_from_sentence(vocabulary, articles[random_number])
         target_variable = indexes_from_sentence(vocabulary, titles[random_number])
         input_seqs.append(input_variable)
@@ -320,8 +246,6 @@ def random_batch(batch_size, vocabulary, articles, titles):
     input_var = Variable(torch.LongTensor(input_padded)).transpose(0, 1)
     target_var = Variable(torch.LongTensor(target_padded)).transpose(0, 1)
 
-    # print(input_var)
-
     if use_cuda:
         input_var = input_var.cuda()
         target_var = target_var.cuda()
@@ -334,35 +258,34 @@ if __name__ == '__main__':
     print(use_cuda, flush=True)
     if use_cuda and len(sys.argv) == 2:
         torch.cuda.set_device(int(sys.argv[1]))
-        print("Changed to GPU: %s" % sys.argv[1])
+        print("Changed to GPU: %s" % sys.argv[1], flush=True)
 
     # Train and evaluate parameters
     relative_path = '../data/articles2_nor/25to100'
     num_articles = -1  # -1 means to take the maximum from the provided source
-    num_evaluate = 20
-    iterations = 9400
+    num_evaluate = 10
+    iterations = 100
     start_iter = 1
     total_runtime = 0
-    beams = 2
-    batch_size = 1
+    beams = 3
+    batch_size = 4
 
     # Model parameters
     attention = False
     hidden_size = 128
-    max_length = 1 + 100  # WOWSKI ... 1029 TODO: This should probably be removed fully
+    max_length = 1 + 100  # TODO: This should probably be removed fully
     n_layers = 1
     dropout_p = 0.1
     learning_rate = 0.01
     # TODO: Add teacher forcing here instead of in globals
-    # TODO: Fix teacher forcing
     # TODO: Fix attention decoder
 
-    save_file = '../saved_models/testing/test1.pth.tar'
-    best_model_save_file = '../saved_models/testing/test1_best.pth.tar'
+    save_file = '../saved_models/testing/test3.pth.tar'
+    best_model_save_file = '../saved_models/testing/test3_best.pth.tar'
 
     # When loading a model - the hyper parameters defined here are ignored as they are set in the model
     load_model = False
-    load_file = '../saved_models/testing/seq2seq_char_hidden128_layer1_len80.pth.tar'
+    load_file = '../saved_models/testing/test3.pth.tar'
 
     save_every = 1000  # -1 means never to safe. Must be a multiple of print_every
     print_every = 10  # Also used for plotting
@@ -385,9 +308,8 @@ if __name__ == '__main__':
     encoder1 = EncoderRNN(vocabulary.n_words, hidden_size, n_layers=n_layers, batch_size=batch_size)
 
     if attention:
-        pass
-        # decoder1 = AttnDecoderRNN(hidden_size, vocabulary.n_words, max_length=max_length, n_layers=n_layers,
-        #                           dropout_p=dropout_p)
+        decoder1 = AttnDecoderRNN(hidden_size, vocabulary.n_words, max_length=max_length, n_layers=n_layers,
+                                  dropout_p=dropout_p)
     else:
         decoder1 = DecoderRNN(hidden_size, vocabulary.n_words, n_layers=n_layers, batch_size=batch_size)
 
