@@ -9,6 +9,7 @@ import preprocess as preprocess
 from encoder import *
 from decoder import *
 from globals import *
+import sys
 
 current_iteration = 0
 
@@ -331,6 +332,9 @@ def random_batch(batch_size, vocabulary, articles, titles):
 if __name__ == '__main__':
 
     print(use_cuda, flush=True)
+    if use_cuda and len(sys.argv) == 2:
+        torch.cuda.set_device(int(sys.argv[1]))
+        print("Changed to GPU: %s" % sys.argv[1])
 
     # Train and evaluate parameters
     relative_path = '../data/articles2_nor/25to100'
