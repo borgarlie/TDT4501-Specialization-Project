@@ -15,7 +15,7 @@ from torch import optim
 
 if __name__ == '__main__':
 
-    print(use_cuda, flush=True)
+    print("Use cuda: ", use_cuda, flush=True)
     if use_cuda and len(sys.argv) == 2:
         torch.cuda.set_device(int(sys.argv[1]))
         print("Changed to GPU: %s" % sys.argv[1], flush=True)
@@ -24,9 +24,9 @@ if __name__ == '__main__':
     config_file_path = experiment_path + "/config.json"
     with open(config_file_path) as config_file:
         config = json.load(config_file)
-        pprint(config)  # Pretty print config
 
     config['experiment_path'] = experiment_path
+    print(json.dumps(config, indent=2), flush=True)
 
     relative_path = config['train']['dataset']
     num_articles = config['train']['num_articles']
@@ -81,8 +81,8 @@ if __name__ == '__main__':
     start_epoch = 1
     if load_model:
         try:
-            (start_epoch, total_runtime, attention, max_length, model_state_encoder,
-             model_state_decoder, optimizer_state_encoder, optimizer_state_decoder) = load_state(load_file)
+            (start_epoch, total_runtime, model_state_encoder, model_state_decoder,
+             optimizer_state_encoder, optimizer_state_decoder) = load_state(load_file)
             encoder.load_state_dict(model_state_encoder)
             decoder.load_state_dict(model_state_decoder)
             encoder_optimizer.load_state_dict(optimizer_state_encoder)

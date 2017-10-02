@@ -64,12 +64,6 @@ def chunks(l, n):
         yield l[i:i + n]
 
 
-# Train for a number of epochs
-# def train_iters(articles, titles, vocabulary, encoder, decoder, n_epochs, max_length,
-#                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file, save_every=-1,
-#                 start_epoch=1, total_runtime=0, print_every=1000, plot_every=100, attention=False, batch_size=1,
-#                 teacher_forcing_ratio=0.5):
-
 def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_length,
                 encoder_optimizer, decoder_optimizer, start_epoch=1, total_runtime=0):
 
@@ -130,8 +124,6 @@ def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_leng
                     save_state({
                         'epoch': epoch,
                         'runtime': total_runtime,
-                        'attention': attention,
-                        'max_length': max_length,
                         'model_state_encoder': encoder.state_dict(),
                         'model_state_decoder': decoder.state_dict(),
                         'optimizer_state_encoder': encoder_optimizer.state_dict(),
@@ -150,8 +142,6 @@ def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_leng
         save_state({
             'epoch': epoch,
             'runtime': total_runtime,
-            'attention': attention,
-            'max_length': max_length,
             'model_state_encoder': encoder.state_dict(),
             'model_state_decoder': decoder.state_dict(),
             'optimizer_state_encoder': encoder_optimizer.state_dict(),
@@ -253,7 +243,7 @@ def save_state(state, filename):
 def load_state(filename):
     if os.path.isfile(filename):
         state = torch.load(filename)
-        return (state['epoch'], state['runtime'], state['attention'], state['max_length'],
+        return (state['epoch'], state['runtime'],
                 state['model_state_encoder'], state['model_state_decoder'],
                 state['optimizer_state_encoder'], state['optimizer_state_decoder'])
     else:
