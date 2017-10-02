@@ -1,0 +1,30 @@
+{
+  "train" : {
+    "dataset" : "../data/articles2_nor/25to100",
+    "num_articles" : 150,
+    "num_evaluate" : 10,
+    "num_epochs" : 10,
+    "batch_size" : 16,
+    "learning_rate" : 0.01,
+    "teacher_forcing_ratio" : 0.5,
+    "load" : false,
+    "load_file" : "test1.pth.tar"
+  },
+  "evaluate" : {
+    "beams" : 5
+  },
+  "model" : {
+    "attention" : false,
+    "n_layers" : 1,
+    "hidden_size" : 128,
+    "dropout_p" : 0.1
+  },
+  "save" : {
+    "save_file" : "test1.pth.tar",
+    "best_save_file" : "test1_best.pth.tar"
+  },
+  "log" : {
+    "print_every" : 10,
+    "plot_every" : 10
+  }
+}

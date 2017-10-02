@@ -1,5 +1,4 @@
 import torch.nn as nn
-from globals import *
 
 ######################################################################
 # The Encoder

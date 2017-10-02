@@ -1,6 +1,6 @@
 import torch.nn as nn
-from globals import *
 import torch.nn.functional as F
+import torch
 
 ######################################################################
 # The Decoder
