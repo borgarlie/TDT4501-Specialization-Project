@@ -1,6 +1,5 @@
 import json
 import sys
-from pprint import pprint
 sys.path.append('..')  # ugly dirtyfix for imports to work
 
 
@@ -15,12 +14,18 @@ from torch import optim
 
 if __name__ == '__main__':
 
-    print("Use cuda: ", use_cuda, flush=True)
-    if use_cuda and len(sys.argv) == 2:
-        torch.cuda.set_device(int(sys.argv[1]))
-        print("Changed to GPU: %s" % sys.argv[1], flush=True)
+    if use_cuda:
+        if len(sys.argv) < 3:
+            print("Expected 2 arguments: [0] = experiment path (e.g. test_experiment1), [1] = GPU (0 or 1)", flush=True)
+            exit()
+        torch.cuda.set_device(int(sys.argv[2]))
+        print("Using GPU: %s" % sys.argv[2], flush=True)
+    else:
+        if len(sys.argv) < 2:
+            print("Expected 1 argument: [0] = experiment path (e.g. test_experiment1)", flush=True)
+            exit()
 
-    experiment_path = "test_experiment1"  # TODO: Make this arg 2 input instead
+    experiment_path = sys.argv[1]
     config_file_path = experiment_path + "/config.json"
     with open(config_file_path) as config_file:
         config = json.load(config_file)
