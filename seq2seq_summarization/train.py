@@ -11,7 +11,8 @@ import sys
 
 # Train one batch
 def train(input_variable, input_lengths, target_variable, target_lengths,
-          encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, attention=False, batch_size=1):
+          encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, attention=False, batch_size=1,
+          teacher_forcing_ratio=0.5):
 
     encoder_optimizer.zero_grad()
     decoder_optimizer.zero_grad()
@@ -57,10 +58,17 @@ def train(input_variable, input_lengths, target_variable, target_lengths,
     return loss.data[0]
 
 
+def chunks(l, n):
+    """Yield successive n-sized chunks from l."""
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
+
+
 # Train for a number of epochs
-def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_length,
+def train_iters(articles, titles, vocabulary, encoder, decoder, n_epochs, max_length,
                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file, save_every=-1,
-                start_iter=1, total_runtime=0, print_every=1000, plot_every=100, attention=False, batch_size=1):
+                start_epoch=1, total_runtime=0, print_every=1000, plot_every=100, attention=False, batch_size=1,
+                teacher_forcing_ratio=0.5):
 
     start = time.time()
     plot_losses = []
@@ -70,61 +78,78 @@ def train_iters(articles, titles, vocabulary, encoder, decoder, n_iters, max_len
 
     criterion = nn.NLLLoss()
 
+    num_batches = int(len(articles) / batch_size)
+    n_iters = num_batches * n_epochs
+
     print("Starting training", flush=True)
+    for epoch in range(start_epoch, n_epochs + 1):
+        print("Starting epoch: %d" % epoch, flush=True)
 
-    # TODO: Fix shuffle instead of random (so we take every input as many times)
-    # TODO: Should we fix such that the input_num_articles % batch_size == 0, and put the remaining in evaluation ?
-    # TODO: Rename iterations to epochs
-    for itr in range(start_iter, n_iters + 1):
-        # random_number = random.randint(0, len(articles) - 1)
-        # input_variable, target_variable = variables_from_pair(articles[random_number], titles[random_number],
-        #                                                       vocabulary)
-        input_variable, input_lengths, target_variable, target_lengths = random_batch(batch_size, vocabulary, articles,
-                                                                                      titles, max_length, attention)
+        # shuffle articles and titles (equally)
+        c = list(zip(articles, titles))
+        random.shuffle(c)
+        articles_shuffled, titles_shuffled = zip(*c)
 
-        loss = train(input_variable, input_lengths, target_variable, target_lengths,
-                     encoder, decoder, encoder_optimizer, decoder_optimizer,
-                     criterion, attention=attention, batch_size=batch_size)
-        print_loss_total += loss
-        plot_loss_total += loss
+        # split into batches
+        article_batches = list(chunks(articles_shuffled, batch_size))
+        title_batches = list(chunks(titles_shuffled, batch_size))
 
-        if itr % print_every == 0:
-            print_loss_avg = print_loss_total / print_every
-            print_loss_total = 0
-            progress, total_runtime = time_since(start, itr / n_iters, total_runtime)
-            start = time.time()
-            print('%s (%d %d%%) %.4f' % (progress, itr, itr / n_iters * 100, print_loss_avg), flush=True)
-            if print_loss_avg < lowest_loss:
-                lowest_loss = print_loss_avg
-                print(" ^ Lowest loss so far", flush=True)
-                if save_every > 0:
-                    save_state({
-                        'iteration': itr + 1,
-                        'runtime': total_runtime,
-                        'attention': attention,
-                        'max_length': max_length,
-                        'model_state_encoder': encoder1.state_dict(),
-                        'model_state_decoder': decoder1.state_dict(),
-                        'optimizer_state_encoder': encoder_optimizer.state_dict(),
-                        'optimizer_state_decoder': decoder_optimizer.state_dict()
-                    }, best_model_save_file)
+        for batch in range(num_batches):
+            input_variable, input_lengths, target_variable, target_lengths = random_batch(batch_size, vocabulary,
+                article_batches[batch], title_batches[batch], max_length, attention)
 
-        if itr % plot_every == 0:
-            plot_loss_avg = plot_loss_total / plot_every
-            plot_losses.append(plot_loss_avg)
-            plot_loss_total = 0
+            loss = train(input_variable, input_lengths, target_variable, target_lengths,
+                         encoder, decoder, encoder_optimizer, decoder_optimizer,
+                         criterion, attention=attention, batch_size=batch_size,
+                         teacher_forcing_ratio=teacher_forcing_ratio)
+            print_loss_total += loss
+            plot_loss_total += loss
 
-        if save_every > 0 and itr % save_every == 0:
-            save_state({
-                'iteration': itr+1,
-                'runtime': total_runtime,
-                'attention': attention,
-                'max_length': max_length,
-                'model_state_encoder': encoder1.state_dict(),
-                'model_state_decoder': decoder1.state_dict(),
-                'optimizer_state_encoder': encoder_optimizer.state_dict(),
-                'optimizer_state_decoder': decoder_optimizer.state_dict()
-            }, save_file)
+            # calculate number of batches processed
+            itr = (epoch-1) * num_batches + batch + 1
+            if itr % print_every == 0:
+                print_loss_avg = print_loss_total / print_every
+                print_loss_total = 0
+                progress, total_runtime = time_since(start, itr / n_iters, total_runtime)
+                start = time.time()
+                print('%s (%d %d%%) %.4f' % (progress, itr, itr / n_iters * 100, print_loss_avg), flush=True)
+                if print_loss_avg < lowest_loss:
+                    lowest_loss = print_loss_avg
+                    print(" ^ Lowest loss so far", flush=True)
+                    # TODO: Consider how we want to save the best model. Only on each epoch or in between?
+                    # This current solution will only work for evaluate, and will not work properly if we continue
+                    # training on the best model
+                    if save_every > 0:
+                        save_state({
+                            'epoch': epoch,
+                            'runtime': total_runtime,
+                            'attention': attention,
+                            'max_length': max_length,
+                            'model_state_encoder': encoder1.state_dict(),
+                            'model_state_decoder': decoder1.state_dict(),
+                            'optimizer_state_encoder': encoder_optimizer.state_dict(),
+                            'optimizer_state_decoder': decoder_optimizer.state_dict()
+                        }, best_model_save_file)
+
+            if itr % plot_every == 0:
+                plot_loss_avg = plot_loss_total / plot_every
+                plot_losses.append(plot_loss_avg)
+                plot_loss_total = 0
+
+        # save each epoch
+        print("Saving model", flush=True)
+        itr = epoch * num_batches
+        _, total_runtime = time_since(start, itr / n_iters, total_runtime)
+        save_state({
+            'epoch': epoch,
+            'runtime': total_runtime,
+            'attention': attention,
+            'max_length': max_length,
+            'model_state_encoder': encoder1.state_dict(),
+            'model_state_decoder': decoder1.state_dict(),
+            'optimizer_state_encoder': encoder_optimizer.state_dict(),
+            'optimizer_state_decoder': decoder_optimizer.state_dict()
+        }, save_file)
 
     # show_plot(plot_losses)
 
@@ -227,16 +252,14 @@ def load_state(filename):
         raise FileNotFoundError
 
 
-# TODO: FIx so its not as random.. just shuffled
 def random_batch(batch_size, vocabulary, articles, titles, max_length, attention=False):
     input_seqs = []
     target_seqs = []
 
     # Choose random pairs
     for i in range(batch_size):
-        random_number = random.randint(0, len(articles) - 1)
-        input_variable = indexes_from_sentence(vocabulary, articles[random_number])
-        target_variable = indexes_from_sentence(vocabulary, titles[random_number])
+        input_variable = indexes_from_sentence(vocabulary, articles[i])
+        target_variable = indexes_from_sentence(vocabulary, titles[i])
         input_seqs.append(input_variable)
         target_seqs.append(target_variable)
 
@@ -276,32 +299,37 @@ if __name__ == '__main__':
 
     # Train and evaluate parameters
     relative_path = '../data/articles2_nor/25to100'
-    num_articles = -1  # -1 means to take the maximum from the provided source
-    num_evaluate = 300
-    iterations = 5000
-    start_iter = 1
+    num_articles = 150  # -1 means to take the maximum from the provided source
+    num_evaluate = 10
+    num_epochs = 10
+    start_epoch = 1
     total_runtime = 0
     beams = 5
     batch_size = 16
 
     # Model parameters
-    attention = True
+    attention = False
     hidden_size = 128
     n_layers = 1
     dropout_p = 0.1
     learning_rate = 0.01
-    # TODO: Add teacher forcing here instead of in globals
-    # TODO: Fix attention decoder
+    teacher_forcing_ratio = 0.5
 
-    save_file = '../saved_models/testing/test3.pth.tar'
-    best_model_save_file = '../saved_models/testing/test3_best.pth.tar'
+    print("Hidden size: %d" % hidden_size, flush=True)
+    print("Attention: " + str(attention), flush=True)
+    print("n-layers: %d" % n_layers, flush=True)
+    print("Batch size: %d" % batch_size, flush=True)
+    print("Teacher forcing: %0.1f" % teacher_forcing_ratio, flush=True)
+
+    save_file = '../saved_models/testing/test3_2.pth.tar'
+    best_model_save_file = '../saved_models/testing/test3_2_best.pth.tar'
 
     # When loading a model - the hyper parameters defined here are ignored as they are set in the model
     load_model = False
-    load_file = '../saved_models/testing/test3.pth.tar'
+    load_file = '../saved_models/testing/test3_2.pth.tar'
 
     save_every = 1000  # -1 means never to safe. Must be a multiple of print_every
-    print_every = 200  # Also used for plotting
+    print_every = 10  # Also used for plotting
 
     if save_every % print_every != 0:
         raise ValueError("Print_every must be a multiple of save_every, but is currently %d and %d"
@@ -310,8 +338,15 @@ if __name__ == '__main__':
     pre = preprocess_single_char if single_char else preprocess
     articles, titles, vocabulary = pre.generate_vocabulary(relative_path, num_articles)
 
-    train_length = num_articles - num_evaluate
+    total_articles = len(articles)
+    train_articles_length = total_articles - num_evaluate
+
+    # Append remainder to evaluate set so that the training set has exactly a multiple of batch size
+    num_evaluate += train_articles_length % batch_size
+    train_length = total_articles - num_evaluate
     test_length = num_evaluate
+    print("Train length = %d" % train_length)
+    print("Test length = %d" % test_length)
 
     train_articles = articles[0:train_length]
     train_titles = titles[0:train_length]
@@ -348,10 +383,11 @@ if __name__ == '__main__':
             print("No file found: exiting", flush=True)
             exit()
 
-    train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, iterations, max_length,
+    train_iters(train_articles, train_titles, vocabulary, encoder1, decoder1, num_epochs, max_length,
                 encoder_optimizer, decoder_optimizer, save_file, best_model_save_file,
-                save_every=save_every, start_iter=start_iter, total_runtime=total_runtime,
-                print_every=print_every, plot_every=print_every, attention=attention, batch_size=batch_size)
+                save_every=save_every, start_epoch=start_epoch, total_runtime=total_runtime,
+                print_every=print_every, plot_every=print_every, attention=attention, batch_size=batch_size,
+                teacher_forcing_ratio=teacher_forcing_ratio)
     # When saving the best model, the average is counted over "print every", to not have this randomly be very low,
     # we need to have it large enough, I.e. at least 100 ++
 
