@@ -15,7 +15,7 @@ class Vocabulary:
         self.word2index = {"<PAD>": 0, "<SOS>": 1, "<EOS>": 2}
         self.word2count = {"<PAD>": 0, "<SOS>": 1, "<EOS>": 2}
         self.index2word = {0: "<PAD>", 1: "<SOS>", 2: "<EOS>"}
-        self.n_words = 2  # Count SOS and EOS
+        self.n_words = 3  # Count PAD, SOS and EOS
 
     def add_sentence(self, sentence):
         for word in sentence.split(' '):

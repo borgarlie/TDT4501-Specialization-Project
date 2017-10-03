@@ -151,9 +151,25 @@ def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_leng
     # show_plot(plot_losses)
 
 
+def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, max_length):
+    for i in range(len(articles)):
+        input_sentence = articles[i]
+        target_sentence = titles[i]
+        print('>', input_sentence, flush=True)
+        print('=', target_sentence, flush=True)
+        output_beams = evaluate(config, vocabulary, encoder, decoder, input_sentence, max_length)
+        for beam in output_beams:
+            output_words = beam.decoded_word_sequence
+            if single_char:
+                output_sentence = ''.join(output_words)  # For single characters
+            else:
+                output_sentence = ' '.join(output_words)  # for words
+            print('<', str(beam.get_avg_score()), output_sentence, flush=True)
+        print('', flush=True)
+
+
 def evaluate(config, vocabulary, encoder, decoder, sentence, max_length):
     attention = config['model']['attention']
-    beams = config['evaluate']['beams']
     if attention:
         input_variable = indexes_from_sentence(vocabulary, sentence)
         input_variable = pad_seq(input_variable, max_length)
@@ -166,74 +182,95 @@ def evaluate(config, vocabulary, encoder, decoder, sentence, max_length):
 
     encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
 
-    decoder_input = Variable(torch.LongTensor([SOS_token]))
-    decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+    expansions = config['evaluate']['expansions']
+    keep_beams = config['evaluate']['keep_beams']
+    return_beams = config['evaluate']['return_beams']
 
-    decoder_hidden = encoder_hidden
-    decoded_words = []
+    # first decoder beam. input_hidden = encoder_hidden
+    beams = [Beam([], [], SOS_token, encoder_hidden)]
+    for i in range(max_length):
+        beams = expand_and_prune_beams(vocabulary, beams, encoder_outputs, decoder, attention, expansions, keep_beams)
 
-    # TODO: Fix tree search with multiplicative pruning
-
-    # Hard coding the first round in the loop to generate a beam search from the top k candidates of the first word
-    if attention:
-        decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs, 1)
-    else:
-        # batch_size = 1 as we do not care about batching during evaluation
-        decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
-    topv, topi = decoder_output.data.topk(beams)
-    decoder_input = []
-    for i in range(beams):
-        decoded_words.append([])
-        ni = topi[0][i]
-        if ni == EOS_token:
-            decoded_words[i].append('<EOS>')
-        else:
-            decoded_words[i].append(vocabulary.index2word[ni])
-        decoder_input1 = Variable(torch.LongTensor([[ni]]))
-        decoder_input.append(decoder_input1.cuda() if use_cuda else decoder_input1)
-
-    # looping the beams
-    for beam in range(beams):
-        if decoded_words[beam][0] != '<EOS>':
-            decoded_words[beam] = evaluate_single_beam(vocabulary, decoder, decoded_words[beam], decoder_input[beam],
-                                                       decoder_hidden, encoder_outputs, max_length, attention)
-
-    return decoded_words
+    return prune_beams(beams, return_beams)
 
 
-def evaluate_single_beam(vocabulary, decoder, decoded_words, decoder_input, decoder_hidden, encoder_outputs, max_length, attention=False):
-    for di in range(max_length):
-        if attention:
-            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs, 1)
-        else:
-            decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
-        topv, topi = decoder_output.data.topk(1)
-        ni = topi[0][0]
-        if ni == EOS_token:
-            decoded_words.append('<EOS>')
-            break
-        else:
-            decoded_words.append(vocabulary.index2word[ni])
-        decoder_input = Variable(torch.LongTensor([[ni]]))
+def expand_and_prune_beams(vocabulary, beams, encoder_outputs, decoder, attention=False, expansions=5, keep_beams=10):
+    generated_beams = []
+    for i in range(len(beams)):
+        generated_beams += beams[i].expand(vocabulary, encoder_outputs, decoder, attention, expansions)
+    return prune_beams(generated_beams, keep_beams)
+
+
+# Takes in a set of beams and returns the best scoring beams up until num_keep_beams
+def prune_beams(beams, num_keep_beams):
+    return sorted(beams, reverse=True)[:num_keep_beams]
+
+
+class Beam:
+    def __init__(self, decoded_word_sequence, scores, input_token, input_hidden):
+        self.decoded_word_sequence = decoded_word_sequence
+        self.scores = scores  # This is a list of log(output from softmax) for each word in the sequence
+        self.input_token = input_token
+        self.input_hidden = input_hidden
+
+    def get_avg_score(self):
+        if len(self.scores) == 0:
+            return 0.0
+        return sum(self.scores) / len(self.scores)
+
+    def __lt__(self, other):
+        return self.get_avg_score().__lt__(other.get_avg_score())
+
+    def generate_expanded_beams(self, vocabulary, topv, topi, decoder_hidden, expansions=5):
+        for i in range(expansions):
+            next_word = topi[0][i]
+            decoded_words = list(self.decoded_word_sequence) + [vocabulary.index2word[next_word]]
+            # Using log(score) to be able to sum instead of multiply,
+            # so that we are able to take the average based on number of tokens in the sequence
+            # next_score = numpy.log2(topv[0][i]) - already using log Softmax
+            next_score = topv[0][i]
+            new_scores = list(self.scores) + [next_score]
+            yield Beam(decoded_words, new_scores, next_word, decoder_hidden)
+
+    # return list of expanded beams. return self if current beam is at end of sentence
+    def expand(self, vocabulary, encoder_outputs, decoder, attention=False, expansions=5):
+        if self.input_token == EOS_token:
+            return list([self])
+        # expand beam
+        decoder_input = Variable(torch.LongTensor([self.input_token]))
         decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+        if attention:
+            decoder_output, decoder_hidden, _ = decoder(decoder_input, self.input_hidden, encoder_outputs, 1)
+        else:
+            # batch_size = 1 as we do not care about batching during evaluation
+            decoder_output, decoder_hidden = decoder(decoder_input, self.input_hidden, 1)
+        topv, topi = decoder_output.data.topk(expansions)
+        return list(self.generate_expanded_beams(vocabulary, topv, topi, decoder_hidden, expansions))
 
-    return decoded_words
+    def __repr__(self):
+        return str(self.get_avg_score())
+
+    def __str__(self):
+        return self.__repr__()
 
 
-def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, max_length):
-    for i in range(len(articles)):
-        input_sentence = articles[i]
-        target_sentence = titles[i]
-        print('>', input_sentence, flush=True)
-        print('=', target_sentence, flush=True)
-        output_words = evaluate(config, vocabulary, encoder, decoder, input_sentence, max_length)
-        for beam in output_words:
-            if single_char:
-                output_sentence = ''.join(beam)  # For single characters
-            else:
-                output_sentence = ' '.join(beam)  # for words
-            print('<', output_sentence, flush=True)
-        print('', flush=True)
+# def evaluate_single_beam(vocabulary, decoder, decoded_words, decoder_input, decoder_hidden, encoder_outputs, max_length, attention=False):
+#     for di in range(max_length):
+#         if attention:
+#             decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs, 1)
+#         else:
+#             decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
+#         topv, topi = decoder_output.data.topk(1)
+#         ni = topi[0][0]
+#         if ni == EOS_token:
+#             decoded_words.append('<EOS>')
+#             break
+#         else:
+#             decoded_words.append(vocabulary.index2word[ni])
+#         decoder_input = Variable(torch.LongTensor([[ni]]))
+#         decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+#
+#     return decoded_words
 
 
 def save_state(state, filename):

@@ -1,22 +1,24 @@
 {
   "train" : {
     "dataset" : "../data/articles2_nor/25to100",
-    "num_articles" : 150,
-    "num_evaluate" : 10,
-    "num_epochs" : 10,
+    "num_articles" : -1,
+    "num_evaluate" : 300,
+    "num_epochs" : 200,
     "batch_size" : 16,
-    "learning_rate" : 0.01,
+    "learning_rate" : 0.02,
     "teacher_forcing_ratio" : 0.5,
     "load" : false,
     "load_file" : "test1.pth.tar"
   },
   "evaluate" : {
-    "beams" : 5
+    "expansions" : 3,
+    "keep_beams" : 20,
+    "return_beams": 10
   },
   "model" : {
     "attention" : false,
-    "n_layers" : 1,
-    "hidden_size" : 128,
+    "n_layers" : 2,
+    "hidden_size" : 256,
     "dropout_p" : 0.1
   },
   "save" : {
@@ -24,7 +26,7 @@
     "best_save_file" : "test1_best.pth.tar"
   },
   "log" : {
-    "print_every" : 10,
-    "plot_every" : 10
+    "print_every" : 200,
+    "plot_every" : 200
   }
 }
