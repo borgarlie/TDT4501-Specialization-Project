@@ -65,7 +65,7 @@ def chunks(l, n):
 
 
 def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_length,
-                encoder_optimizer, decoder_optimizer, start_epoch=1, total_runtime=0):
+                encoder_optimizer, decoder_optimizer, writer, start_epoch=1, total_runtime=0):
 
     start = time.time()
     plot_losses = []
@@ -87,6 +87,7 @@ def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_leng
     print("Starting training", flush=True)
     for epoch in range(start_epoch, n_epochs + 1):
         print("Starting epoch: %d" % epoch, flush=True)
+        batch_loss_avg = 0
 
         # shuffle articles and titles (equally)
         c = list(zip(articles, titles))
@@ -99,13 +100,14 @@ def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_leng
 
         for batch in range(num_batches):
             input_variable, input_lengths, target_variable, target_lengths = random_batch(batch_size, vocabulary,
-                article_batches[batch], title_batches[batch], max_length, attention)
+                                                                                          article_batches[batch], title_batches[batch], max_length, attention)
 
             loss = train(config, input_variable, input_lengths, target_variable, target_lengths,
                          encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
 
             print_loss_total += loss
             plot_loss_total += loss
+            batch_loss_avg += loss
             # calculate number of batches processed
             itr = (epoch-1) * num_batches + batch + 1
 
@@ -135,6 +137,9 @@ def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_leng
                 plot_losses.append(plot_loss_avg)
                 plot_loss_total = 0
 
+        # log to tensorboard
+        writer.add_scalar('loss', batch_loss_avg / num_batches, epoch)
+
         # save each epoch
         print("Saving model", flush=True)
         itr = epoch * num_batches
@@ -148,7 +153,7 @@ def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_leng
             'optimizer_state_decoder': decoder_optimizer.state_dict()
         }, config['experiment_path'] + "/" + config['save']['save_file'])
 
-    # show_plot(plot_losses)
+        # show_plot(plot_losses)
 
 
 def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, max_length):
