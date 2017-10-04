@@ -10,6 +10,7 @@ from seq2seq_summarization.encoder import *
 from seq2seq_summarization.globals import *
 from seq2seq_summarization.train import *
 from torch import optim
+from tensorboardX import SummaryWriter
 
 
 if __name__ == '__main__':
@@ -33,6 +34,7 @@ if __name__ == '__main__':
     config['experiment_path'] = experiment_path
     print(json.dumps(config, indent=2), flush=True)
 
+    writer = SummaryWriter(config['tensorboard']['log_path'])
     relative_path = config['train']['dataset']
     num_articles = config['train']['num_articles']
     num_evaluate = config['train']['num_evaluate']
@@ -98,6 +100,6 @@ if __name__ == '__main__':
             exit()
 
     train_iters(config, train_articles, train_titles, vocabulary, encoder, decoder, max_length,
-                encoder_optimizer, decoder_optimizer, start_epoch=start_epoch, total_runtime=total_runtime)
+                encoder_optimizer, decoder_optimizer, writer, start_epoch=start_epoch, total_runtime=total_runtime)
 
     evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length)

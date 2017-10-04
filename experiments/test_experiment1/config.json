@@ -26,5 +26,8 @@
   "log" : {
     "print_every" : 10,
     "plot_every" : 10
+  },
+  "tensorboard" : {
+    "log_path" : "../log/test_experiment"
   }
 }
