@@ -64,6 +64,11 @@ def chunks(l, n):
         yield l[i:i + n]
 
 
+def adjust_learning_rate(optimizer, new_learning_rate):
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = new_learning_rate
+
+
 def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_length,
                 encoder_optimizer, decoder_optimizer, writer, start_epoch=1, total_runtime=0):
 
@@ -84,10 +89,19 @@ def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_leng
     num_batches = int(len(articles) / batch_size)
     n_iters = num_batches * n_epochs
 
+    learning_rate = config['train']['learning_rate']
+    start_learning_rate_decay_at_epoch = config['train']['decay_epoch']
+
     print("Starting training", flush=True)
     for epoch in range(start_epoch, n_epochs + 1):
         print("Starting epoch: %d" % epoch, flush=True)
         batch_loss_avg = 0
+
+        if epoch > start_learning_rate_decay_at_epoch:
+            learning_rate = learning_rate / 2
+            adjust_learning_rate(encoder_optimizer, learning_rate)
+            adjust_learning_rate(decoder_optimizer, learning_rate)
+            print("New learning rate: %.8f" % learning_rate)
 
         # shuffle articles and titles (equally)
         c = list(zip(articles, titles))
@@ -239,7 +253,7 @@ class Beam:
 
     # return list of expanded beams. return self if current beam is at end of sentence
     def expand(self, vocabulary, encoder_outputs, decoder, attention=False, expansions=5):
-        if self.input_token == EOS_token:
+        if self.input_token == EOS_token or self.input_token == PAD_token:
             return list([self])
         # expand beam
         decoder_input = Variable(torch.LongTensor([self.input_token]))
