@@ -1,4 +1,6 @@
 from __future__ import unicode_literals, print_function, division
+
+import operator
 from io import open
 
 
@@ -97,10 +99,10 @@ def count_unk_items(vocab_items):
 
 
 def get_list_to_unk(vocab_items, min_freq=3):
-    vocab_items_single_char = []
+    vocab_items_single_char = {}
     for item in vocab_items:
         if item.num <= min_freq:
-            vocab_items_single_char.append(item.value)
+            vocab_items_single_char[item.value] = True
     return vocab_items_single_char
 
 
@@ -122,7 +124,7 @@ def save_articles_with_unk(articles, titles, relative_path, to_replace_vocabular
                     num_unk += 1
                 else:
                     unked_words.append(word)
-            if num_unk >= 10:
+            if num_unk >= 8:
                 num_unks_10 += 1
                 articles_to_skip.append(item)
             else:
@@ -167,27 +169,31 @@ def count_low_length(articles, titles):
 
 
 if __name__ == '__main__':
-    relative_path_valid = '../data/articles1/valid'
-    relative_path_politi = '../data/articles2_nor/politi'
-    relative_path_len80 = '../data/articles2_nor/all_len_25to80v3'
-    relative_path_len80_skip = '../data/articles2_nor/all_len_25to80_skip_v3'
+    # relative_path_valid = '../data/articles1/valid'
+    # relative_path_politi = '../data/articles2_nor/politi'
+    # relative_path_len80 = '../data/articles2_nor/all_len_25to80v3'
+    # relative_path_len80_skip = '../data/articles2_nor/all_len_25to80_skip_v3'
 
-    article, title, vocabulary = generate_vocabulary(relative_path_len80, -1)
+    relative_path_ntb = '../data/ntb/ntb_80'
+    relative_path_ntb_unked = '../data/ntb/ntb_80.unk'
+
+    article, title, vocabulary = generate_vocabulary(relative_path_ntb_unked, -1)
 
     vocab_items = []
     for k, v in vocabulary.index2word.items():
         vocab_items.append(VocabularySizeItem(k, v, vocabulary.word2count[v]))
 
-    # sorted_x = sorted(vocab_items, key=operator.attrgetter('num'), reverse=True)
-    # for item in sorted_x:
-    #     print(item)
-
-    minimum_frequency = 5
+    minimum_frequency = 25
     unked_chars = get_list_to_unk(vocab_items, minimum_frequency)
 
     print("Unked chars: %d" % len(unked_chars))
     print("Remaining vocab: %d" % (len(vocab_items) - len(unked_chars)))
 
-    count_low_length(article, title)
+    # sorted_x = sorted(vocab_items, key=operator.attrgetter('num'), reverse=True)
+    # for item in sorted_x:
+    #     if item.num < minimum_frequency:
+    #         print(item)
 
-    save_articles_with_unk(article, title, relative_path_len80_skip, unked_chars)
+    # count_low_length(article, title)
+
+    # save_articles_with_unk(article, title, relative_path_ntb, unked_chars)

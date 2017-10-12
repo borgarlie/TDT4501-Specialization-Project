@@ -67,10 +67,13 @@ def clean_yet_another_ntb(text):
 
 def shorten_text(text, max_length, min_length):
     words = text.split(" ")
-    for i in range(max_length, min_length, -1):
-        if "." in words[i]:
+    for i in range(max_length-1, min_length, -1):
+        # should break on any of . ? !
+        if "." == words[i] or "?" == words[i] or "!" == words[i]:
             words = words[:i+1]
             break
+    else:
+        raise ValueError("No punctation to stop at when shortening")
     return " ".join(words)
 
 
