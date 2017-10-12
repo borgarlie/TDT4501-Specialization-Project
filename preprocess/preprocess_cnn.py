@@ -1,3 +1,4 @@
+import json
 import os
 import re
 
@@ -8,19 +9,30 @@ class Article:
         self.title = ""
 
     def clean(self):
-        self.text = Article.clean_single(self.text)
-        self.title = Article.clean_single(self.title)
+        self.text = Article.clean_single(self.text, body=True)
+        self.title = Article.clean_single(self.title, body=False)
 
     @staticmethod
-    def clean_single(txt):
-        if len(txt.strip()) < 5:
-            raise ValueError
-        # TODO: Maybe remove "cnn" from the start of the text if it is there?
+    def clean_single(txt, body=True):
         txt = process_text(txt)
+        words = txt.split(" ")
+        if len(words) > max_words:
+            for i in range(max_words-1, min_words, -1):
+                if "." in words[i] or "!" in words[i] or "?" in words[i]:
+                    words = words[:i+1]
+                    break
+            else:
+                raise ValueError("No stop token to stop at when shortening")
+        txt = ' '.join(words)
+        if txt.count(' ') < min_words and body:
+            raise ValueError("body too small")
+        # print(txt.count(' '))
         return txt
 
     def __str__(self):
-        return "Title: " + self.title + "\nText: " + self.text
+        text = "Title: \n" + self.title + "\n"
+        text += "Body: \n" + self.body + "\n"
+        return text
 
     def __repr__(self):
         return self.__str__()
@@ -41,10 +53,19 @@ def process_text(text):
     :param text: The text to be processed
     :return: The processed text
     """
-    text = re.sub('(?<=[^?!.0-9])(?=[.,!?])', ' ', text)  # 4
+    no_split_list = ['U.S', 'U.N', 'U.K', 'L.A', 'J.K']  # Seems like they have to be the same length
+    no_split_string = str(no_split_list).strip('[]').replace(',', '|').replace('\'', '').replace(' ', '')
+
+    text = re.sub(".*--", "", text, count=1)  # Removing cnn from start of text
+    if text.startswith('(CNN)'):
+        text = re.sub('\(CNN\)', '', text, count=1)
+    text = re.sub(r'(?<=[^?!.0-9{}])(?=[.,!?])'.format(no_split_string), ' ', text)  # 4
     text = re.sub(r'(?![0-9])(?<=[.,])(?=[^\s])', r' ', text)  # 4
+    text = re.sub(r'(?<={})(?=[^\s])'.format(no_split_string), r' ', text)  # space after no split list
     text = text.lower()  # 2
-    text = re.sub("[^A-Za-z0-9 .!?,øæå]+", " ", text)  # 3
+    text = re.sub('[^A-Za-z0-9 .!?,øæå]+', '', text)  # 3
+    text = re.sub(r'((?<=[a-z])(?=[.]))|((?=[a-z])(?<=[.]))(?=[^\s])', r' ', text)  # space a-z.a-z
+    text = re.sub(r'((?=[0-9])(?<=[a-z]))|((?=[a-z])(?<=[0-9]))(?=[^\s])', r' ', text)  # space 0-9a-z
     text = re.sub('[0-9]', '#', text)  # 8
     text = " ".join(text.split())  # 5, 6, 7  - i think
     return text
@@ -60,17 +81,31 @@ def read_directory(directory):
 def read_content(directory):
     i = 0
     errors = 0
+    non_errors = 0
+    error_types = {}
+
     for filename in read_directory(directory):
         i += 1
-        if i % 1000 == 0:
-            print(i)
+        # if i % 1000 == 0:
+        #     print(i)
         with open(filename, 'r') as file:
             try:
                 yield get_article_from_file(file)
-            except ValueError:
+                non_errors += 1
+            except ValueError as err:
+                err = err.__str__()
                 errors += 1
-    print("Total articles: %d" % i)
-    print("Total errors: %d" % errors)
+                if err in error_types:
+                    error_types[err] += 1
+                else:
+                    error_types[err] = 1
+    print("Done processing data")
+    print("total errors = %d" % errors)
+    print("Total articles without error = %d" % non_errors)
+    print("Error types: ")
+    print(json.dumps(error_types, indent=2), flush=True)
+    # print("Total articles: %d" % i)
+    # print("Total errors: %d" % errors)
 
 
 def get_article_from_file(file):
@@ -88,7 +123,15 @@ def get_article_from_file(file):
             break
         elif line.strip().startswith("@highlight"):
             highlight_is_next = True
+        elif article.text.count(' ') < max_words:
+            article.text += line
     article.clean()
+
+    if article.title.count(' ') < min_title:
+        raise ValueError("Title too small")
+
+    if article.text.count(' ') <= article.title.count(' ') + 10:
+        raise ValueError("Article length is smaller than title length + 10")
     return article
 
 
@@ -104,10 +147,21 @@ def save_articles(articles, name, relative_path):
 
 
 if __name__ == '__main__':
-    directory = os.fsencode("../data/cnn2/stories/")
-    articles = list(read_content(directory))
-    relative_save_path = "../data/preprocessed_cnn/"
-    name = "all_test_cnn"
+    max_words = 80
+    min_words = 25
+    min_title = 4
+    print("max words: %d" % max_words)
+    print("min words: %d" % min_words)
+    print("min title: %d" % min_title)
+
+    cnn_directory = os.fsencode("../data/cnn2/stories/")
+    dailymail_directory = os.fsencode("../data/dailymail/stories/")
+    articles1 = list(read_content(cnn_directory))
+    articles2 = list(read_content(dailymail_directory))
+    articles = articles1 + articles2
+
+    relative_save_path = "../data/preprocessed_combined/"
+    name = "all_test"
     save_articles(articles, name, relative_save_path)
     print("Number of OK articles: %d" % len(articles))
     print("DONE")
