@@ -31,7 +31,7 @@ class Article:
 
     def __str__(self):
         text = "Title: \n" + self.title + "\n"
-        text += "Body: \n" + self.body + "\n"
+        text += "Text: \n" + self.text + "\n"
         return text
 
     def __repr__(self):
