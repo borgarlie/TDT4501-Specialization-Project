@@ -34,7 +34,44 @@ def is_not_contructive_article(text):
 
 
 def clean_ntb(text):
-    pass
+    words = text.split(" ")
+    contains_ntb = False
+    for k in range(0, 10):
+        if "NTB" in words[k].upper() or "NPK" in words[k].upper():
+            contains_ntb = True
+        if words[k].endswith(":"):
+            if contains_ntb:
+                words = words[k+1:]
+            break
+    return " ".join(words)
+
+
+def clean_copyright(text):
+    words = text.split(" ")
+    length = len(words)
+    for k in range(length-5, length):
+        if "\u00a9" in words[k]:
+            words = words[0:k]
+            break
+    if "(NTB)" in words[-1].upper():
+        words = words[0:-1]
+    return " ".join(words)
+
+
+def clean_yet_another_ntb(text):
+    words = text.split(" ")
+    if "ntb" in words[-1] and "." in words[-2]:
+        words = words[:-1]
+    return " ".join(words)
+
+
+def shorten_text(text, max_length, min_length):
+    words = text.split(" ")
+    for i in range(max_length, min_length, -1):
+        if "." in words[i]:
+            words = words[:i+1]
+            break
+    return " ".join(words)
 
 
 class Article:
@@ -59,10 +96,15 @@ class Article:
         elif title_length > max_words:
             raise ValueError("Title too big")
 
-        self.body = process_text(art["text"])
+        text = art["text"]
+        text = clean_ntb(text)
+        text = clean_copyright(text)
+        self.body = process_text(text)
+        self.body = clean_yet_another_ntb(self.body)
         article_length = len(self.body.split(" "))
         if article_length > max_words:
-            raise ValueError("body too large")
+            self.body = shorten_text(self.body, max_words, min_words)
+            # raise ValueError("body too large")
         elif article_length < min_words:
             raise ValueError("body too small")
         elif article_length <= title_length + 5:
@@ -142,8 +184,8 @@ def save_articles_for_single_tag(articles, tag, relative_path):
 
 
 if __name__ == '__main__':
-    tag = "ntb_120"
-    max_words = 120
+    tag = "ntb_80"
+    max_words = 80
     min_words = 25
     min_title = 4
     print("max words: %d" % max_words)
