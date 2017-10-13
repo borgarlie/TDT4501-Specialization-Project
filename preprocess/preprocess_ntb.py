@@ -2,6 +2,8 @@ import json
 import pickle
 import re
 
+from dateutil import parser
+
 
 def process_text(text):
     """
@@ -85,6 +87,10 @@ class Article:
             raise ValueError("Title not present")
         if "text" not in art:
             raise ValueError("Text not present")
+        if "timestamp" not in art:
+            raise ValueError("Timestamp not present")
+
+        self.timestamp = parser.parse(art["timestamp"])
 
         self.model = "none"
         if "nyhetstype" in art:
@@ -124,6 +130,9 @@ class Article:
     def __repr__(self):
         self.__str__()
 
+    def __cmp__(self, other):
+        return self.body == other.body or self.title == other.title
+
 
 def count_things_in_article(data):
     things = {}
@@ -160,6 +169,8 @@ def get_articles_from_pickle_file(path, max_words=100, min_words=25, min_title=4
             try:
                 articles.append(Article(article, max_words, min_words, min_title))
                 non_errors += 1
+                # if non_errors == 1000:
+                #     break
             except ValueError as err:
                 err = err.__str__()
                 errors += 1
@@ -186,6 +197,24 @@ def save_articles_for_single_tag(articles, tag, relative_path):
             f.write("\n")
 
 
+# assumes a sorted list. looks 100 before and after each article to compare with
+def throw_away_duplicates(articles):
+    non_duplicates = []
+    for a in articles:
+        non_duplicate = True
+        length = len(non_duplicates)
+        start = 0
+        if len(non_duplicates) > 200:
+            start = length - 200
+        for k in range(start, length):
+            if a.__cmp__(non_duplicates[k]):
+                non_duplicate = False
+                break
+        if non_duplicate:
+            non_duplicates.append(a)
+    return non_duplicates
+
+
 if __name__ == '__main__':
     tag = "ntb_80"
     max_words = 80
@@ -196,6 +225,12 @@ if __name__ == '__main__':
     print("min title: %d" % min_title)
 
     articles = get_articles_from_pickle_file('../data/ntb/ntb.pkl', max_words, min_words, min_title)
+    articles.sort(key=lambda r: r.timestamp)
+    print("Throwing away duplicates")
+    articles = throw_away_duplicates(articles)
+    print("Done throwing away duplicates")
+    # for a in articles:
+    #     print(a.timestamp)
     # filtered = filter_list_with_single_tag(articles, tag)
     save_articles_for_single_tag(articles, tag, '../data/ntb/')
     print("Total articles saved: %d" % len(articles))

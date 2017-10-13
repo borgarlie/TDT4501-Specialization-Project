@@ -38,6 +38,7 @@ if __name__ == '__main__':
     relative_path = config['train']['dataset']
     num_articles = config['train']['num_articles']
     num_evaluate = config['train']['num_evaluate']
+    num_throw = config['train']['throw']
     batch_size = config['train']['batch_size']
     learning_rate = config['train']['learning_rate']
 
@@ -52,7 +53,7 @@ if __name__ == '__main__':
     pre = preprocess_single_char if single_char else preprocess
     articles, titles, vocabulary = pre.generate_vocabulary(relative_path, num_articles)
 
-    total_articles = len(articles)
+    total_articles = len(articles) - num_throw
     train_articles_length = total_articles - num_evaluate
 
     # Append remainder to evaluate set so that the training set has exactly a multiple of batch size
@@ -60,12 +61,18 @@ if __name__ == '__main__':
     train_length = total_articles - num_evaluate
     test_length = num_evaluate
     print("Train length = %d" % train_length, flush=True)
+    print("Throw length = %d" % num_throw, flush=True)
     print("Test length = %d" % test_length, flush=True)
 
     train_articles = articles[0:train_length]
     train_titles = titles[0:train_length]
+    print("Range train: %d - %d" % (0, train_length), flush=True)
+
+    train_length = train_length + num_throw  # compensate for thrown away articles
     test_articles = articles[train_length:train_length + test_length]
     test_titles = titles[train_length:train_length + test_length]
+
+    print("Range test: %d - %d" % (train_length, train_length+test_length), flush=True)
 
     encoder = EncoderRNN(vocabulary.n_words, hidden_size, n_layers=n_layers, batch_size=batch_size)
 
