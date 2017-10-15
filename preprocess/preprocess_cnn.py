@@ -1,3 +1,4 @@
+from random import shuffle
 import json
 import os
 import re
@@ -12,13 +13,17 @@ class Article:
         self.text = Article.clean_single(self.text, body=True)
         self.title = Article.clean_single(self.title, body=False)
 
+    def remove_bad_title(self):
+        if self.title.__contains__("this page includes the show transcript"):
+            raise ValueError('Bad title')
+
     @staticmethod
     def clean_single(txt, body=True):
         txt = process_text(txt)
         words = txt.split(" ")
         if len(words) > max_words:
             for i in range(max_words-1, min_words, -1):
-                if "." in words[i] or "!" in words[i] or "?" in words[i]:
+                if "." == words[i] or "!" == words[i] or "?" == words[i]:
                     words = words[:i+1]
                     break
             else:
@@ -37,6 +42,9 @@ class Article:
     def __repr__(self):
         return self.__str__()
 
+    def __cmp__(self, other):
+        return self.text == other.text or self.title == other.title
+
 
 def process_text(text):
     """
@@ -53,19 +61,20 @@ def process_text(text):
     :param text: The text to be processed
     :return: The processed text
     """
-    no_split_list = ['U.S', 'U.N', 'U.K', 'L.A', 'J.K']  # Seems like they have to be the same length
-    no_split_string = str(no_split_list).strip('[]').replace(',', '|').replace('\'', '').replace(' ', '')
+    no_split_dict = {'u . s': 'u.s', 'u . n': 'u.n', 'u . k': 'u.k', 'l . a': 'l.a', 'j . k': 'j.k', 'a . m': 'a.m',
+                     'p . m': 'p.m', 'd . j': 'd.j', 'd . a': 'd.a'}
 
     text = re.sub(".*--", "", text, count=1)  # Removing cnn from start of text
-    if text.startswith('(CNN)'):
+    if text.startswith('(CNN)'):  # Remove cnn from articles that starts with only cnn
         text = re.sub('\(CNN\)', '', text, count=1)
-    text = re.sub(r'(?<=[^?!.0-9{}])(?=[.,!?])'.format(no_split_string), ' ', text)  # 4
+    text = re.sub(r'(?<=[^?!.0-9])(?=[.,!?])', ' ', text)  # 4
     text = re.sub(r'(?![0-9])(?<=[.,])(?=[^\s])', r' ', text)  # 4
-    text = re.sub(r'(?<={})(?=[^\s])'.format(no_split_string), r' ', text)  # space after no split list
     text = text.lower()  # 2
     text = re.sub('[^A-Za-z0-9 .!?,øæå]+', '', text)  # 3
     text = re.sub(r'((?<=[a-z])(?=[.]))|((?=[a-z])(?<=[.]))(?=[^\s])', r' ', text)  # space a-z.a-z
     text = re.sub(r'((?=[0-9])(?<=[a-z]))|((?=[a-z])(?<=[0-9]))(?=[^\s])', r' ', text)  # space 0-9a-z
+    for key in no_split_dict:
+        text = text.replace(key, no_split_dict[key])  # Fixing word splits
     text = re.sub('[0-9]', '#', text)  # 8
     text = " ".join(text.split())  # 5, 6, 7  - i think
     return text
@@ -126,6 +135,7 @@ def get_article_from_file(file):
         elif article.text.count(' ') < max_words:
             article.text += line
     article.clean()
+    article.remove_bad_title()
 
     if article.title.count(' ') < min_title:
         raise ValueError("Title too small")
@@ -146,6 +156,23 @@ def save_articles(articles, name, relative_path):
             f.write("\n")
 
 
+# assumes a sorted list. looks 100 before and after each article to compare with
+def throw_away_duplicates(articles):
+    non_duplicates = []
+    for a in articles:
+        non_duplicate = True
+        length = len(non_duplicates)
+        start = 0
+        if len(non_duplicates) > 200:
+            start = length - 200
+        for k in range(start, length):
+            if a.__cmp__(non_duplicates[k]):
+                non_duplicate = False
+                break
+        if non_duplicate:
+            non_duplicates.append(a)
+    return non_duplicates
+
 if __name__ == '__main__':
     max_words = 80
     min_words = 25
@@ -154,11 +181,15 @@ if __name__ == '__main__':
     print("min words: %d" % min_words)
     print("min title: %d" % min_title)
 
-    cnn_directory = os.fsencode("../data/cnn2/stories/")
+    cnn_directory = os.fsencode("../data/cnn/stories/")
     dailymail_directory = os.fsencode("../data/dailymail/stories/")
     articles1 = list(read_content(cnn_directory))
     articles2 = list(read_content(dailymail_directory))
     articles = articles1 + articles2
+
+    articles.sort(key=lambda x: x.title, reverse=True)
+    articles = throw_away_duplicates(articles)
+    shuffle(articles)
 
     relative_save_path = "../data/preprocessed_combined/"
     name = "all_test"
