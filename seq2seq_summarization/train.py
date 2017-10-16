@@ -204,6 +204,7 @@ def calculate_loss_on_eval_set(config, vocabulary, encoder, decoder, criterion, 
         loss += calculate_loss_on_single_eval_article(attention, encoder, decoder, criterion, input_variable,
                                                       target_variable, input_length)
     loss_avg = loss / len(eval_articles)
+    writer.add_scalar('Evaluation loss', loss_avg, epoch)
     print("Evaluation set loss for epoch %d: %.4f" % (epoch, loss_avg), flush=True)
 
 
