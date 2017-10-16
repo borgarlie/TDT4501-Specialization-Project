@@ -106,7 +106,8 @@ if __name__ == '__main__':
             print("No file found: exiting", flush=True)
             exit()
 
-    train_iters(config, train_articles, train_titles, vocabulary, encoder, decoder, max_length,
-                encoder_optimizer, decoder_optimizer, writer, start_epoch=start_epoch, total_runtime=total_runtime)
+    train_iters(config, train_articles, train_titles, test_articles, test_titles, vocabulary,
+                encoder, decoder, max_length, encoder_optimizer, decoder_optimizer,
+                writer, start_epoch=start_epoch, total_runtime=total_runtime)
 
     evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length)

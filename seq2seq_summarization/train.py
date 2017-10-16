@@ -69,7 +69,7 @@ def adjust_learning_rate(optimizer, new_learning_rate):
         param_group['lr'] = new_learning_rate
 
 
-def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_length,
+def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary, encoder, decoder, max_length,
                 encoder_optimizer, decoder_optimizer, writer, start_epoch=1, total_runtime=0):
 
     start = time.time()
@@ -173,7 +173,61 @@ def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_leng
             'optimizer_state_decoder': decoder_optimizer.state_dict()
         }, config['experiment_path'] + "/" + config['save']['save_file'])
 
+        calculate_loss_on_eval_set(config, vocabulary, encoder, decoder, criterion, writer, epoch, max_length,
+                                   eval_articles, eval_titles)
+
         # show_plot(plot_losses)
+
+
+# Calculate loss on the evaluation set. Does not modify anything.
+def calculate_loss_on_eval_set(config, vocabulary, encoder, decoder, criterion, writer, epoch, max_length,
+                               eval_articles, eval_titles):
+    attention = config['model']['attention']
+    loss = 0
+    for i in range(0, len(eval_articles)):
+        article = eval_articles[i]
+        title = eval_titles[i]
+        if attention:
+            input_variable = indexes_from_sentence(vocabulary, article)
+            input_variable = pad_seq(input_variable, max_length)
+            input_length = max_length
+            input_variable = Variable(torch.LongTensor(input_variable)).unsqueeze(1)
+            input_variable = input_variable.cuda() if use_cuda else input_variable
+        else:
+            input_variable = variable_from_sentence(vocabulary, article)
+            input_length = input_variable.size()[0]
+
+        target_variable = indexes_from_sentence(vocabulary, title)
+        target_variable = Variable(torch.LongTensor(target_variable)).unsqueeze(1)
+        target_variable = target_variable.cuda() if use_cuda else target_variable
+
+        loss += calculate_loss_on_single_eval_article(attention, encoder, decoder, criterion, input_variable,
+                                                      target_variable, input_length)
+    loss_avg = loss / len(eval_articles)
+    print("Evaluation set loss for epoch %d: %.4f" % (epoch, loss_avg), flush=True)
+
+
+def calculate_loss_on_single_eval_article(attention, encoder, decoder, criterion, input_variable, target_variable,
+                                          input_length):
+    loss = 0
+    encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
+
+    decoder_input = Variable(torch.LongTensor([SOS_token]))
+    decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+    decoder_hidden = encoder_hidden
+
+    for di in range(target_variable.size()[0]):
+        if attention:
+            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
+                                                                        encoder_outputs, 1)
+        else:
+            decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
+        topv, topi = decoder_output.data.topk(1)
+        ni = topi  # next input, batch of top softmax scores
+        decoder_input = Variable(torch.cuda.LongTensor(ni)) if use_cuda else Variable(torch.LongTensor(ni))
+        loss += criterion(decoder_output, target_variable[di])
+
+    return loss.data[0]
 
 
 def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, max_length):
