@@ -91,17 +91,23 @@ def train_iters(config, articles, titles, vocabulary, encoder, decoder, max_leng
 
     learning_rate = config['train']['learning_rate']
     start_learning_rate_decay_at_epoch = config['train']['decay_epoch']
+    decay_frequency = config['train']['decay_frequency']
+    counter_since_decay = decay_frequency
 
     print("Starting training", flush=True)
     for epoch in range(start_epoch, n_epochs + 1):
         print("Starting epoch: %d" % epoch, flush=True)
         batch_loss_avg = 0
 
-        if epoch > start_learning_rate_decay_at_epoch:
-            learning_rate = learning_rate / 2
-            adjust_learning_rate(encoder_optimizer, learning_rate)
-            adjust_learning_rate(decoder_optimizer, learning_rate)
-            print("New learning rate: %.8f" % learning_rate)
+        if epoch >= start_learning_rate_decay_at_epoch:
+            if counter_since_decay == decay_frequency:
+                counter_since_decay = 1
+                learning_rate = learning_rate / 2
+                adjust_learning_rate(encoder_optimizer, learning_rate)
+                adjust_learning_rate(decoder_optimizer, learning_rate)
+                print("New learning rate: %.8f" % learning_rate, flush=True)
+            else:
+                counter_since_decay += 1
 
         # shuffle articles and titles (equally)
         c = list(zip(articles, titles))
