@@ -79,8 +79,20 @@ def shorten_text(text, max_length, min_length):
     return " ".join(words)
 
 
+# throw away cats that is not in the wanted list
+# if remaining cats are 0 -> throw error
+def choose_cats(initial_cats, wanted_cats):
+    remaining_cats = []
+    for cat in initial_cats:
+        if cat in wanted_cats:
+            remaining_cats.append(cat)
+    if len(remaining_cats) == 0:
+        raise ValueError("Article does not match with required categories")
+    return remaining_cats
+
+
 class Article:
-    def __init__(self, art, max_words, min_words, min_title):
+    def __init__(self, art, max_words, min_words, min_title, wanted_cats):
         if art is None:
             raise ValueError("Article is of type None")
         if "title" not in art:
@@ -89,8 +101,10 @@ class Article:
             raise ValueError("Text not present")
         if "timestamp" not in art:
             raise ValueError("Timestamp not present")
-
-        self.timestamp = parser.parse(art["timestamp"])
+        if "underkategori" not in art:
+            raise ValueError("Underkategori not present")
+        if "overkategori" not in art:
+            raise ValueError("Overkategori not present")
 
         self.model = "none"
         if "nyhetstype" in art:
@@ -122,6 +136,17 @@ class Article:
         if is_not_contructive_article(self.body):
             raise ValueError("Not constructive article")
 
+        # parse timestamp
+        self.timestamp = parser.parse(art["timestamp"])
+
+        # get categories (both are lists)
+        if len(wanted_cats) > 0:
+            self.maincat = choose_cats(art["overkategori"], wanted_cats)
+        else:
+            self.maincat = []
+        # self.subcat = art["underkategori"]
+        self.subcat = []
+
     def __str__(self):
         text = "Title: \n" + self.title + "\n"
         text += "Body: \n" + self.body + "\n"
@@ -145,18 +170,7 @@ def count_things_in_article(data):
     print(json.dumps(things, indent=2), flush=True)
 
 
-def count_categories(data):
-    categories = {}
-    for article in data:
-        cat = article['nyhetstype']
-        if cat in categories:
-            categories[cat] += 1
-        else:
-            categories[cat] = 1
-    print(json.dumps(categories, indent=2), flush=True)
-
-
-def get_articles_from_pickle_file(path, max_words=100, min_words=25, min_title=4):
+def get_articles_from_pickle_file(path, max_words=100, min_words=25, min_title=4, wanted_cats=[]):
     articles = []
     with open(path, 'rb') as f:
         print("Loading data")
@@ -167,7 +181,7 @@ def get_articles_from_pickle_file(path, max_words=100, min_words=25, min_title=4
         error_types = {}
         for article in data:
             try:
-                articles.append(Article(article, max_words, min_words, min_title))
+                articles.append(Article(article, max_words, min_words, min_title, wanted_cats))
                 non_errors += 1
                 # if non_errors == 1000:
                 #     break
@@ -215,6 +229,31 @@ def throw_away_duplicates(articles):
     return non_duplicates
 
 
+def count_categories(data):
+    maincats = {}
+    subcats = {}
+    for article in data:
+        for cat in article.maincat:
+            if cat in maincats:
+                maincats[cat] += 1
+            else:
+                maincats[cat] = 1
+        for cat in article.subcat:
+            if cat in subcats:
+                subcats[cat] += 1
+            else:
+                subcats[cat] = 1
+    print("")
+    s = [(k, maincats[k]) for k in sorted(maincats, key=maincats.get, reverse=True)]
+    for k, v in s:
+        print(k, v)
+    print("")
+    s = [(k, subcats[k]) for k in sorted(subcats, key=subcats.get, reverse=True)]
+    for k, v in s:
+        print(k, v)
+    print("")
+
+
 if __name__ == '__main__':
     tag = "ntb_80"
     max_words = 80
@@ -224,14 +263,25 @@ if __name__ == '__main__':
     print("min words: %d" % min_words)
     print("min title: %d" % min_title)
 
-    articles = get_articles_from_pickle_file('../data/ntb/ntb.pkl', max_words, min_words, min_title)
+    # wanted_categories = ["Sport", "Økonomi og næringsliv", "Politikk", "Kriminalitet og rettsvesen",
+    #                      "Ulykker og naturkatastrofer", "Krig og konflikter"]
+    wanted_categories = ["Kriminalitet og rettsvesen", "Ulykker og naturkatastrofer", "Krig og konflikter"]
+
+    articles = get_articles_from_pickle_file('../data/ntb/ntb.pkl', max_words, min_words, min_title, wanted_categories)
     articles.sort(key=lambda r: r.timestamp)
     print("Throwing away duplicates")
     articles = throw_away_duplicates(articles)
     print("Done throwing away duplicates")
+
+    count_categories(articles)
+
     # for a in articles:
     #     print(a.timestamp)
     # filtered = filter_list_with_single_tag(articles, tag)
-    save_articles_for_single_tag(articles, tag, '../data/ntb/')
+    # save_articles_for_single_tag(articles, tag, '../data/ntb/')
     print("Total articles saved: %d" % len(articles))
     print("Done")
+
+    # TODO: Encode and print the different "one-hot-vectors" that we can create from these categories
+    # How many of each one-hot-vector exists?
+    # Can we train a classifier that actually hits close to 100% on multiple categories for the same article?
