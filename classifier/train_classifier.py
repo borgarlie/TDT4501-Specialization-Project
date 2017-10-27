@@ -2,6 +2,7 @@ import random
 
 import torch.nn as nn
 from torch import optim
+import torch.nn.functional as F
 
 from classifier.cnn_classifier import CNN_Text
 from seq2seq_summarization.globals import *
@@ -12,17 +13,20 @@ from seq2seq_summarization import preprocess as preprocess
 def train(categories, sequences, batch_size, model, optimizer, criterion):
     optimizer.zero_grad()
     categories_scores = model(sequences)
-    # print(categories_scores)
 
-    # TODO: Currently dirty-fixed for single category
-    categories = [[int(categories[0])]] # list of list, cuz batch
-    # Should it be a simple int list ?
-    categories = Variable(torch.FloatTensor(categories))
+    category_batch_list = []
+    for batch in range(0, batch_size):
+        batch_cat = []
+        for cat in categories[batch]:
+            batch_cat.append(int(cat))
+        category_batch_list.append(batch_cat)
+
+    categories = Variable(torch.FloatTensor(category_batch_list))
     if use_cuda:
         categories = categories.cuda()
-    # print(categories)
 
     loss = criterion(categories_scores, categories)
+
     loss.backward()
     optimizer.step()
     return loss.data[0]
@@ -117,20 +121,6 @@ def random_batch(vocabulary, articles, titles):
     # seq_pairs = sorted(zip(input_seqs, target_seqs), key=lambda p: len(p[0]), reverse=True)
     # input_seqs, target_seqs = zip(*seq_pairs)
 
-    # For input and target sequences, get array of lengths and pad with 0s to max length
-    # if attention:
-    #     input_lengths = [max_length for s in input_seqs]
-    #     input_padded = [pad_seq(s, max_length) for s in input_seqs]
-    #     target_lengths = [len(s) for s in target_seqs]
-    #     target_padded = [pad_seq(s, max_length) for s in target_seqs]
-    # else:
-    # input_lengths = [len(s) for s in sequences]
-    # input_padded = [pad_seq(s, max(input_lengths)) for s in input_seqs]
-    # target_lengths = [len(s) for s in target_seqs]
-    # target_padded = [pad_seq(s, max(target_lengths)) for s in target_seqs]
-
-    # Any reason to pad at all with batches?
-
     # Turn padded arrays into (batch_size x max_len) tensors, transpose into (max_len x batch_size)
     # sequences = Variable(torch.LongTensor(sequences)).transpose(0, 1)
     sequences = Variable(torch.LongTensor(sequences))
@@ -141,20 +131,47 @@ def random_batch(vocabulary, articles, titles):
     return categories, sequences
 
 
+# TODO: Fix eval
+
+# Eval one batch
+# def eval_single_article(categories, sequences, model, criterion):
+#     categories_scores = model(sequences)
+#
+#     category_batch_list = []
+#     batch_cat = []
+#     for cat in categories[0]:
+#         batch_cat.append(int(cat))
+#     category_batch_list.append(batch_cat)
+#
+#     categories = Variable(torch.FloatTensor(category_batch_list))
+#     if use_cuda:
+#         categories = categories.cuda()
+#
+#     loss = criterion(categories_scores, categories)
+#
+#     loss.backward()
+#     optimizer.step()
+#     return loss.data[0]
+
+
 if __name__ == '__main__':
     num_articles = 2000
+    num_eval = 100
+
     learning_rate = 0.001
     hidden_size = 128
     dropout_p = 0.5
     num_kernels = 100
     kernel_sizes = [3, 4, 5]
-    num_classes = 1
+    num_classes = 6
 
     relative_path = '../data/ntb_processed/ntb_80_6cat.unk'
 
     articles, titles, vocabulary = preprocess.generate_vocabulary(relative_path, num_articles, True)
     train_articles = articles[0:num_articles]
     train_titles = titles[0:num_articles]
+    eval_articles = articles[num_articles:num_articles+num_eval]
+    eval_titles = titles[num_articles:num_articles + num_eval]
 
     model = CNN_Text(vocabulary.n_words, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p)
     # vocab_size, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p
