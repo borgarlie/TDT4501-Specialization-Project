@@ -147,6 +147,21 @@ class Article:
         # self.subcat = art["underkategori"]
         self.subcat = []
 
+    def writecats(self, wanted_cats):
+        towrite = ""
+        for wanted in wanted_cats:
+            match = False
+            for cat in self.maincat:
+                if cat == wanted:
+                    match = True
+                    break
+            if match:
+                towrite += '1'
+            else:
+                towrite += '0'
+        towrite += " >>> "
+        return towrite
+
     def __str__(self):
         text = "Title: \n" + self.title + "\n"
         text += "Body: \n" + self.body + "\n"
@@ -211,6 +226,20 @@ def save_articles_for_single_tag(articles, tag, relative_path):
             f.write("\n")
 
 
+def save_articles_with_category(articles, tag, relative_path, wanted_cats):
+    with open(relative_path + tag + '.article.txt', 'w') as f:
+        for item in articles:
+            if len(item.maincat) == 0:
+                print("Error during saving. No category found")
+            f.write(item.writecats(wanted_cats))
+            f.write(item.body)
+            f.write("\n")
+    with open(relative_path + tag + '.title.txt', 'w') as f:
+        for item in articles:
+            f.write(item.title)
+            f.write("\n")
+
+
 # assumes a sorted list. looks 100 before and after each article to compare with
 def throw_away_duplicates(articles):
     non_duplicates = []
@@ -255,7 +284,7 @@ def count_categories(data):
 
 
 if __name__ == '__main__':
-    tag = "ntb_80"
+    tag = "ntb_80_6cat"
     max_words = 80
     min_words = 25
     min_title = 4
@@ -263,9 +292,9 @@ if __name__ == '__main__':
     print("min words: %d" % min_words)
     print("min title: %d" % min_title)
 
-    # wanted_categories = ["Sport", "Økonomi og næringsliv", "Politikk", "Kriminalitet og rettsvesen",
-    #                      "Ulykker og naturkatastrofer", "Krig og konflikter"]
-    wanted_categories = ["Kriminalitet og rettsvesen", "Ulykker og naturkatastrofer", "Krig og konflikter"]
+    wanted_categories = ["Sport", "Økonomi og næringsliv", "Politikk", "Kriminalitet og rettsvesen",
+                         "Ulykker og naturkatastrofer", "Krig og konflikter"]
+    # wanted_categories = ["Kriminalitet og rettsvesen", "Ulykker og naturkatastrofer", "Krig og konflikter"]
 
     articles = get_articles_from_pickle_file('../data/ntb/ntb.pkl', max_words, min_words, min_title, wanted_categories)
     articles.sort(key=lambda r: r.timestamp)
@@ -279,9 +308,9 @@ if __name__ == '__main__':
     #     print(a.timestamp)
     # filtered = filter_list_with_single_tag(articles, tag)
     # save_articles_for_single_tag(articles, tag, '../data/ntb/')
+
+    save_articles_with_category(articles, tag, '../data/ntb/', wanted_categories)
     print("Total articles saved: %d" % len(articles))
     print("Done")
 
-    # TODO: Encode and print the different "one-hot-vectors" that we can create from these categories
-    # How many of each one-hot-vector exists?
     # Can we train a classifier that actually hits close to 100% on multiple categories for the same article?
