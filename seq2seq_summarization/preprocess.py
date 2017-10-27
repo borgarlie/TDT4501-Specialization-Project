@@ -33,7 +33,7 @@ class Vocabulary:
             self.word2count[word] += 1
 
 
-def generate_vocabulary(relative_path, max_size=-1):
+def generate_vocabulary(relative_path, max_size=-1, with_categories=False):
     print("Reading lines...")
     article = open(relative_path + '.article.txt', encoding='utf-8').read().strip().split('\n')
     title = open(relative_path + '.title.txt', encoding='utf-8').read().strip().split('\n')
@@ -47,14 +47,18 @@ def generate_vocabulary(relative_path, max_size=-1):
 
     longest_sentence = 0
 
+    start = 0
+    if with_categories:
+        start = 2
+
     print("Counting words...")
     # for sentence in article:
-    for sentence in range(0, max_size):
+    for sentence in range(start, max_size):
         vocabulary.add_sentence(article[sentence])
         if len(article[sentence].split(' ')) > longest_sentence:
             longest_sentence = len(article[sentence].split(' '))
             # print(sentence)
-    for sentence in range(0, max_size):
+    for sentence in range(start, max_size):
         vocabulary.add_sentence(title[sentence])
         if len(title[sentence].split(' ')) > longest_sentence:
             longest_sentence = len(title[sentence].split(' '))
@@ -174,16 +178,17 @@ if __name__ == '__main__':
     # relative_path_len80 = '../data/articles2_nor/all_len_25to80v3'
     # relative_path_len80_skip = '../data/articles2_nor/all_len_25to80_skip_v3'
 
-    relative_path_ntb = '../data/ntb/ntb_80'
-    relative_path_ntb_unked = '../data/ntb/ntb_80.unk'
+    relative_path_ntb = '../data/ntb/ntb_80_6cat'
+    relative_path_ntb_unked = '../data/ntb/ntb_80_6cat.unk'
 
-    article, title, vocabulary = generate_vocabulary(relative_path_ntb_unked, -1)
+    with_categories = True
+    article, title, vocabulary = generate_vocabulary(relative_path_ntb_unked, -1, with_categories)
 
     vocab_items = []
     for k, v in vocabulary.index2word.items():
         vocab_items.append(VocabularySizeItem(k, v, vocabulary.word2count[v]))
 
-    minimum_frequency = 25
+    minimum_frequency = 15
     unked_chars = get_list_to_unk(vocab_items, minimum_frequency)
 
     print("Unked chars: %d" % len(unked_chars))
@@ -194,6 +199,6 @@ if __name__ == '__main__':
     #     if item.num < minimum_frequency:
     #         print(item)
 
-    # count_low_length(article, title)
+    count_low_length(article, title)
 
     # save_articles_with_unk(article, title, relative_path_ntb, unked_chars)

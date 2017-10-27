@@ -39,6 +39,8 @@ if __name__ == '__main__':
     num_articles = config['train']['num_articles']
     num_evaluate = config['train']['num_evaluate']
     num_throw = config['train']['throw']
+    with_categories = config['train']['with_categories']
+
     batch_size = config['train']['batch_size']
     learning_rate = config['train']['learning_rate']
 
@@ -51,7 +53,7 @@ if __name__ == '__main__':
     load_file = experiment_path + "/" + config['train']['load_file']
 
     pre = preprocess_single_char if single_char else preprocess
-    articles, titles, vocabulary = pre.generate_vocabulary(relative_path, num_articles)
+    articles, titles, vocabulary = pre.generate_vocabulary(relative_path, num_articles, with_categories)
 
     total_articles = len(articles) - num_throw
     train_articles_length = total_articles - num_evaluate

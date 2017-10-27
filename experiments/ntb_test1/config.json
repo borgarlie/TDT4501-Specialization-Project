@@ -4,13 +4,13 @@
     "num_articles" : -1,
     "num_evaluate" : 5000,
     "throw" : 1000,
-    "num_epochs" : 70,
+    "num_epochs" : 44,
     "batch_size" : 32,
     "learning_rate" : 0.02,
-    "decay_epoch" : 45,
+    "decay_epoch" : 40,
     "decay_frequency": 5,
     "teacher_forcing_ratio" : 0.5,
-    "load" : false,
+    "load" : true,
     "load_file" : "test1.pth.tar"
   },
   "evaluate" : {
@@ -19,9 +19,9 @@
     "return_beams": 5
   },
   "model" : {
-    "attention" : false,
+    "attention" : true,
     "n_layers" : 2,
-    "hidden_size" : 512,
+    "hidden_size" : 256,
     "dropout_p" : 0.1
   },
   "save" : {
