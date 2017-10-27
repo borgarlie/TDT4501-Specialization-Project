@@ -2,7 +2,6 @@ import random
 
 import torch.nn as nn
 from torch import optim
-import torch.nn.functional as F
 
 from classifier.cnn_classifier import CNN_Text
 from seq2seq_summarization.globals import *
@@ -38,19 +37,16 @@ def chunks(l, n):
         yield l[i:i + n]
 
 
-def train_iters(articles, titles, vocabulary, model, optimizer):
+def train_iters(articles, titles, vocabulary, model, optimizer, eval_articles, eval_titles, batch_size, n_epochs):
 
     start = time.time()
     plot_losses = []
     print_loss_total = 0  # Reset every print_every
     plot_loss_total = 0  # Reset every plot_every
-
-    n_epochs = 10
-    batch_size = 1
     print_every = 100
     plot_every = 100
 
-    criterion = nn.BCEWithLogitsLoss()  # TODO: Could change to BCEwithLogitsLoss
+    criterion = nn.BCEWithLogitsLoss()
 
     num_batches = int(len(articles) / batch_size)
     n_iters = num_batches * n_epochs
@@ -98,6 +94,9 @@ def train_iters(articles, titles, vocabulary, model, optimizer):
                 plot_losses.append(plot_loss_avg)
                 plot_loss_total = 0
 
+            # evaluate epoch on test set
+        evaluate(eval_articles, eval_titles, vocabulary, model)
+
     print("Done with training")
 
 
@@ -117,13 +116,10 @@ def random_batch(vocabulary, articles, titles):
         sequence = indexes_from_sentence(vocabulary, titles[i])
         sequences.append(sequence)
 
-    # Zip into pairs, sort by length (descending), unzip
-    # seq_pairs = sorted(zip(input_seqs, target_seqs), key=lambda p: len(p[0]), reverse=True)
-    # input_seqs, target_seqs = zip(*seq_pairs)
+    seq_lengths = [len(s) for s in sequences]
+    seq_padded = [pad_seq(s, max(seq_lengths)) for s in sequences]
 
-    # Turn padded arrays into (batch_size x max_len) tensors, transpose into (max_len x batch_size)
-    # sequences = Variable(torch.LongTensor(sequences)).transpose(0, 1)
-    sequences = Variable(torch.LongTensor(sequences))
+    sequences = Variable(torch.LongTensor(seq_padded))
 
     if use_cuda:
         sequences = sequences.cuda()
@@ -131,27 +127,39 @@ def random_batch(vocabulary, articles, titles):
     return categories, sequences
 
 
-# TODO: Fix eval
-
 # Eval one batch
-# def eval_single_article(categories, sequences, model, criterion):
-#     categories_scores = model(sequences)
-#
-#     category_batch_list = []
-#     batch_cat = []
-#     for cat in categories[0]:
-#         batch_cat.append(int(cat))
-#     category_batch_list.append(batch_cat)
-#
-#     categories = Variable(torch.FloatTensor(category_batch_list))
-#     if use_cuda:
-#         categories = categories.cuda()
-#
-#     loss = criterion(categories_scores, categories)
-#
-#     loss.backward()
-#     optimizer.step()
-#     return loss.data[0]
+def eval_single_article(category, sequence, model, criterion):
+    categories_scores = model(sequence)
+
+    category_batch_list = []
+    batch_cat = []
+    for cat in category[0]:
+        batch_cat.append(int(cat))
+    category_batch_list.append(batch_cat)
+
+    categories = Variable(torch.FloatTensor(category_batch_list))
+    if use_cuda:
+        categories = categories.cuda()
+
+    loss = criterion(categories_scores, categories)
+    return loss.data[0]
+
+
+def evaluate(articles, titles, vocabulary, model):
+    criterion = nn.BCEWithLogitsLoss()
+    total_loss = 0
+    for i in range(len(articles)):
+        category, _ = split_category_and_article(articles[i])
+        category = category.strip()  # is .strip() needed?
+        category = [category]
+        sequence = indexes_from_sentence(vocabulary, titles[i])
+        sequence = Variable(torch.LongTensor([sequence]))
+        if use_cuda:
+            sequence = sequence.cuda()
+        loss = eval_single_article(category, sequence, model, criterion)
+        total_loss += loss
+    avg_loss = total_loss / len(articles)
+    print("Avg evaluation loss: %0.4f" % avg_loss)
 
 
 if __name__ == '__main__':
@@ -165,16 +173,19 @@ if __name__ == '__main__':
     kernel_sizes = [3, 4, 5]
     num_classes = 6
 
+    n_epochs = 100
+    batch_size = 16
+
     relative_path = '../data/ntb_processed/ntb_80_6cat.unk'
 
     articles, titles, vocabulary = preprocess.generate_vocabulary(relative_path, num_articles, True)
-    train_articles = articles[0:num_articles]
-    train_titles = titles[0:num_articles]
-    eval_articles = articles[num_articles:num_articles+num_eval]
-    eval_titles = titles[num_articles:num_articles + num_eval]
+    train_articles = articles[0:num_articles-num_eval]
+    train_titles = titles[0:num_articles-num_eval]
+    eval_articles = articles[num_articles-num_eval:num_articles]
+    eval_titles = titles[num_articles-num_eval:num_articles]
 
     model = CNN_Text(vocabulary.n_words, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p)
-    # vocab_size, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    train_iters(train_articles, train_titles, vocabulary, model, optimizer)
+    train_iters(train_articles, train_titles, vocabulary, model, optimizer, eval_articles, eval_titles, batch_size,
+                n_epochs)
