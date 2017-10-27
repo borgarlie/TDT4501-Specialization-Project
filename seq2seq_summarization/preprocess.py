@@ -33,6 +33,11 @@ class Vocabulary:
             self.word2count[word] += 1
 
 
+# This can be optimized to instead search for ">>>" to just split on word position
+def split_category_and_article(article):
+    return article.split(">>>")
+
+
 def generate_vocabulary(relative_path, max_size=-1, with_categories=False):
     print("Reading lines...")
     article = open(relative_path + '.article.txt', encoding='utf-8').read().strip().split('\n')
@@ -46,22 +51,19 @@ def generate_vocabulary(relative_path, max_size=-1, with_categories=False):
     vocabulary = Vocabulary()
 
     longest_sentence = 0
-
-    start = 0
-    if with_categories:
-        start = 2
-
     print("Counting words...")
-    # for sentence in article:
-    for sentence in range(start, max_size):
-        vocabulary.add_sentence(article[sentence])
-        if len(article[sentence].split(' ')) > longest_sentence:
-            longest_sentence = len(article[sentence].split(' '))
-            # print(sentence)
-    for sentence in range(start, max_size):
-        vocabulary.add_sentence(title[sentence])
-        if len(title[sentence].split(' ')) > longest_sentence:
-            longest_sentence = len(title[sentence].split(' '))
+    for i in range(0, max_size):
+        if with_categories:
+            _, art = split_category_and_article(article[i])
+        else:
+            art = article[i]
+        vocabulary.add_sentence(art)
+        if len(art.split(' ')) > longest_sentence:
+            longest_sentence = len(art.split(' '))
+    for i in range(0, max_size):
+        vocabulary.add_sentence(title[i])
+        if len(title[i].split(' ')) > longest_sentence:
+            longest_sentence = len(title[i].split(' '))
 
     print("longest sentence: ", longest_sentence)
 

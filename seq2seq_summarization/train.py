@@ -70,7 +70,7 @@ def adjust_learning_rate(optimizer, new_learning_rate):
 
 
 def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary, encoder, decoder, max_length,
-                encoder_optimizer, decoder_optimizer, writer, start_epoch=1, total_runtime=0):
+                encoder_optimizer, decoder_optimizer, writer, start_epoch=1, total_runtime=0, with_categories=False):
 
     start = time.time()
     plot_losses = []
@@ -119,8 +119,8 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
         title_batches = list(chunks(titles_shuffled, batch_size))
 
         for batch in range(num_batches):
-            input_variable, input_lengths, target_variable, target_lengths = random_batch(batch_size, vocabulary,
-                                                                                          article_batches[batch], title_batches[batch], max_length, attention)
+            categories, input_variable, input_lengths, target_variable, target_lengths = random_batch(batch_size, vocabulary,
+                    article_batches[batch], title_batches[batch], max_length, attention, with_categories)
 
             loss = train(config, input_variable, input_lengths, target_variable, target_lengths,
                          encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
@@ -174,18 +174,21 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
         }, config['experiment_path'] + "/" + config['save']['save_file'])
 
         calculate_loss_on_eval_set(config, vocabulary, encoder, decoder, criterion, writer, epoch, max_length,
-                                   eval_articles, eval_titles)
+                                   eval_articles, eval_titles, with_categories)
 
         # show_plot(plot_losses)
 
 
 # Calculate loss on the evaluation set. Does not modify anything.
 def calculate_loss_on_eval_set(config, vocabulary, encoder, decoder, criterion, writer, epoch, max_length,
-                               eval_articles, eval_titles):
+                               eval_articles, eval_titles, with_categories=False):
     attention = config['model']['attention']
     loss = 0
     for i in range(0, len(eval_articles)):
-        article = eval_articles[i]
+        if with_categories:
+            category, article = split_category_and_article(eval_articles[i])
+        else:
+            article = eval_articles[i]
         title = eval_titles[i]
         if attention:
             input_variable = indexes_from_sentence(vocabulary, article)
@@ -231,9 +234,12 @@ def calculate_loss_on_single_eval_article(attention, encoder, decoder, criterion
     return loss.data[0]
 
 
-def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, max_length):
+def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, max_length, with_categories=False):
     for i in range(len(articles)):
-        input_sentence = articles[i]
+        if with_categories:
+            category, input_sentence = split_category_and_article(articles[i])
+        else:
+            input_sentence = articles[i]
         target_sentence = titles[i]
         print('>', input_sentence, flush=True)
         print('=', target_sentence, flush=True)
@@ -367,13 +373,24 @@ def load_state(filename):
         raise FileNotFoundError
 
 
-def random_batch(batch_size, vocabulary, articles, titles, max_length, attention=False):
+# This can be optimized to instead search for ">>>" to just split on word position
+def split_category_and_article(article):
+    return article.split(">>>")
+
+
+def random_batch(batch_size, vocabulary, articles, titles, max_length, attention=False, with_categories=False):
     input_seqs = []
+    categories = []
     target_seqs = []
 
     # Choose random pairs
     for i in range(batch_size):
-        input_variable = indexes_from_sentence(vocabulary, articles[i])
+        if with_categories:
+            category, article = split_category_and_article(articles[i])
+            categories.append(category.strip())
+            input_variable = indexes_from_sentence(vocabulary, article.strip())  # is ".strip" necessary?
+        else:
+            input_variable = indexes_from_sentence(vocabulary, articles[i])
         target_variable = indexes_from_sentence(vocabulary, titles[i])
         input_seqs.append(input_variable)
         target_seqs.append(target_variable)
@@ -402,4 +419,4 @@ def random_batch(batch_size, vocabulary, articles, titles, max_length, attention
         input_var = input_var.cuda()
         target_var = target_var.cuda()
 
-    return input_var, input_lengths, target_var, target_lengths
+    return categories, input_var, input_lengths, target_var, target_lengths

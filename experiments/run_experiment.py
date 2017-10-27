@@ -110,6 +110,7 @@ if __name__ == '__main__':
 
     train_iters(config, train_articles, train_titles, test_articles, test_titles, vocabulary,
                 encoder, decoder, max_length, encoder_optimizer, decoder_optimizer,
-                writer, start_epoch=start_epoch, total_runtime=total_runtime)
+                writer, start_epoch=start_epoch, total_runtime=total_runtime, with_categories=with_categories)
 
-    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length)
+    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length,
+                      with_categories=with_categories)
