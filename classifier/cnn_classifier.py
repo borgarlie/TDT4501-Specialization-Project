@@ -45,7 +45,7 @@ class CNN_Text(nn.Module):
 
         x = [F.max_pool1d(i, i.size(2)).squeeze(2) for i in x]
 
-        # x = torch.cat(x, 1)  # Does this do anything now ?
+        x = torch.cat(x, 1)  # Does this do anything now ?
 
         '''
         x1 = self.conv_and_pool(x,self.conv13) #(N,Co)

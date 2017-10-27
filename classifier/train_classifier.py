@@ -12,10 +12,15 @@ from seq2seq_summarization import preprocess as preprocess
 def train(categories, sequences, batch_size, model, optimizer, criterion):
     optimizer.zero_grad()
     categories_scores = model(sequences)
+    # print(categories_scores)
 
     # TODO: Currently dirty-fixed for single category
-    categories = [int(categories[0])]
+    categories = [[int(categories[0])]] # list of list, cuz batch
     # Should it be a simple int list ?
+    categories = Variable(torch.FloatTensor(categories))
+    if use_cuda:
+        categories = categories.cuda()
+    # print(categories)
 
     loss = criterion(categories_scores, categories)
     loss.backward()
@@ -41,7 +46,7 @@ def train_iters(articles, titles, vocabulary, model, optimizer):
     print_every = 100
     plot_every = 100
 
-    criterion = nn.BCELoss()  # TODO: Could change to BCEwithLogitsLoss
+    criterion = nn.BCEWithLogitsLoss()  # TODO: Could change to BCEwithLogitsLoss
 
     num_batches = int(len(articles) / batch_size)
     n_iters = num_batches * n_epochs
@@ -89,7 +94,7 @@ def train_iters(articles, titles, vocabulary, model, optimizer):
                 plot_losses.append(plot_loss_avg)
                 plot_loss_total = 0
 
-        print("Done with training")
+    print("Done with training")
 
 
 # This can be optimized to instead search for ">>>" to just split on word position
@@ -105,8 +110,8 @@ def random_batch(vocabulary, articles, titles):
     for i in range(batch_size):
         category, _ = split_category_and_article(articles[i])
         categories.append(category.strip())
-        target_variable = indexes_from_sentence(vocabulary, titles[i])
-        sequences.append(target_variable)
+        sequence = indexes_from_sentence(vocabulary, titles[i])
+        sequences.append(sequence)
 
     # Zip into pairs, sort by length (descending), unzip
     # seq_pairs = sorted(zip(input_seqs, target_seqs), key=lambda p: len(p[0]), reverse=True)
@@ -127,7 +132,8 @@ def random_batch(vocabulary, articles, titles):
     # Any reason to pad at all with batches?
 
     # Turn padded arrays into (batch_size x max_len) tensors, transpose into (max_len x batch_size)
-    sequences = Variable(torch.LongTensor(sequences)).transpose(0, 1)
+    # sequences = Variable(torch.LongTensor(sequences)).transpose(0, 1)
+    sequences = Variable(torch.LongTensor(sequences))
 
     if use_cuda:
         sequences = sequences.cuda()
@@ -148,7 +154,7 @@ if __name__ == '__main__':
 
     articles, titles, vocabulary = preprocess.generate_vocabulary(relative_path, num_articles, True)
     train_articles = articles[0:num_articles]
-    train_titles = articles[0:num_articles]
+    train_titles = titles[0:num_articles]
 
     model = CNN_Text(vocabulary.n_words, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p)
     # vocab_size, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p
