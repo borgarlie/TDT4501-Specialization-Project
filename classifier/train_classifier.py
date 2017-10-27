@@ -1,9 +1,12 @@
+import sys
+sys.path.append('..')  # ugly dirtyfix for imports to work
+
 import random
 
 import torch.nn as nn
 from torch import optim
 
-from classifier.cnn_classifier import CNN_Text
+from classifier.cnn_classifier import CNN_Text as CNN_Text
 from seq2seq_summarization.globals import *
 from seq2seq_summarization import preprocess as preprocess
 
@@ -43,8 +46,8 @@ def train_iters(articles, titles, vocabulary, model, optimizer, eval_articles, e
     plot_losses = []
     print_loss_total = 0  # Reset every print_every
     plot_loss_total = 0  # Reset every plot_every
-    print_every = 100
-    plot_every = 100
+    print_every = 500
+    plot_every = 500
 
     criterion = nn.BCEWithLogitsLoss()
 
@@ -159,12 +162,12 @@ def evaluate(articles, titles, vocabulary, model):
         loss = eval_single_article(category, sequence, model, criterion)
         total_loss += loss
     avg_loss = total_loss / len(articles)
-    print("Avg evaluation loss: %0.4f" % avg_loss)
+    print("Avg evaluation loss: %0.4f" % avg_loss, flush=True)
 
 
 if __name__ == '__main__':
-    num_articles = 2000
-    num_eval = 100
+    num_articles = -1
+    num_eval = 5000
 
     learning_rate = 0.001
     hidden_size = 128
@@ -176,6 +179,8 @@ if __name__ == '__main__':
     n_epochs = 100
     batch_size = 16
 
+    print("Using cuda: " + str(use_cuda), flush=True)
+
     relative_path = '../data/ntb_processed/ntb_80_6cat.unk'
 
     articles, titles, vocabulary = preprocess.generate_vocabulary(relative_path, num_articles, True)
@@ -185,6 +190,8 @@ if __name__ == '__main__':
     eval_titles = titles[num_articles-num_eval:num_articles]
 
     model = CNN_Text(vocabulary.n_words, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p)
+    if use_cuda:
+        model = model.cuda()
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     train_iters(train_articles, train_titles, vocabulary, model, optimizer, eval_articles, eval_titles, batch_size,
