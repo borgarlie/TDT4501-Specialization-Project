@@ -6,6 +6,9 @@ import random
 import torch.nn as nn
 from torch import optim
 
+import numpy as np
+from sklearn.metrics import accuracy_score
+
 from classifier.cnn_classifier import CNN_Text as CNN_Text
 from seq2seq_summarization.globals import *
 from seq2seq_summarization import preprocess as preprocess
@@ -56,6 +59,9 @@ def train_iters(articles, titles, vocabulary, model, optimizer, eval_articles, e
 
     lowest_loss = 999
     total_runtime = 0.0
+
+    # Evaluate once before starting to train
+    evaluate(eval_articles, eval_titles, vocabulary, model)
 
     print("Starting training", flush=True)
     for epoch in range(1, n_epochs + 1):
@@ -130,42 +136,118 @@ def random_batch(vocabulary, articles, titles):
     return categories, sequences
 
 
-# Eval one batch
+def calculate_accuracy(gold_truth, predictions):
+    # calculate total accuracy
+    accuracy = accuracy_score(gold_truth, predictions)
+    print("Total Accuracy: %0.4f" % accuracy, flush=True)
+
+    # calculate accuracy for single categories
+    num_categories = len(gold_truth[0])
+    for i in range(0, num_categories):
+        gold_truth_i = []
+        predictions_i = []
+        for k in range(0, len(gold_truth)):
+            gold_truth_i.append([gold_truth[k][i]])
+            predictions_i.append([predictions[k][i]])
+        gold_truth_i = np.array(gold_truth_i)
+        predictions_i = np.array(predictions_i)
+        accuracy_i = accuracy_score(gold_truth_i, predictions_i)
+        print("Accuracy for category %d: %0.4f" % (i, accuracy_i), flush=True)
+
+
+def get_predictions(model_scores, min_score):
+    predicted = []
+    for example in range(0, len(model_scores)):
+        example_predictions = []
+        for score in range(0, len(model_scores[example])):
+            if model_scores[example][score] > min_score:
+                example_predictions.append(1)
+            else:
+                example_predictions.append(0)
+        predicted.append(example_predictions)
+    return np.array(predicted)
+
+
 def eval_single_article(category, sequence, model, criterion):
     categories_scores = model(sequence)
 
-    category_batch_list = []
-    batch_cat = []
-    for cat in category[0]:
-        batch_cat.append(int(cat))
-    category_batch_list.append(batch_cat)
-
-    categories = Variable(torch.FloatTensor(category_batch_list))
+    categories = Variable(torch.FloatTensor([category]))
     if use_cuda:
         categories = categories.cuda()
 
     loss = criterion(categories_scores, categories)
-    return loss.data[0]
+    return loss.data[0], categories_scores.data.cpu().numpy()[0]
+
+
+def create_single_article_category_list(category_string):
+    categories = []
+    for cat in category_string:
+        categories.append(int(cat))
+    return categories
 
 
 def evaluate(articles, titles, vocabulary, model):
+    print("Evaluating", flush=True)
     criterion = nn.BCEWithLogitsLoss()
     total_loss = 0
+    categories_total = []
+    categories_scores_total = []
+
     for i in range(len(articles)):
         category, _ = split_category_and_article(articles[i])
         category = category.strip()  # is .strip() needed?
-        category = [category]
+        category = create_single_article_category_list(category)
+        categories_total.append(category)
         sequence = indexes_from_sentence(vocabulary, titles[i])
         sequence = Variable(torch.LongTensor([sequence]))
         if use_cuda:
             sequence = sequence.cuda()
-        loss = eval_single_article(category, sequence, model, criterion)
+        loss, categories_score = eval_single_article(category, sequence, model, criterion)
+        categories_scores_total.append(categories_score)
         total_loss += loss
     avg_loss = total_loss / len(articles)
     print("Avg evaluation loss: %0.4f" % avg_loss, flush=True)
 
+    np_gold_truth = np.array(categories_total)
+
+    print("Test 1", flush=True)
+    print(categories_total[14], flush=True)
+    print(categories_scores_total[14], flush=True)
+
+    print("Test 2", flush=True)
+    print(categories_total[2134], flush=True)
+    print(categories_scores_total[2134], flush=True)
+
+    print("Calculating accuracy on 0.00 confidence", flush=True)
+    np_predicted = get_predictions(categories_scores_total, 0.00)
+    calculate_accuracy(np_gold_truth, np_predicted)
+
+    print("Calculating accuracy on 0.50 confidence", flush=True)
+    np_predicted = get_predictions(categories_scores_total, 0.50)
+    calculate_accuracy(np_gold_truth, np_predicted)
+
+    print("Calculating accuracy on 0.75 confidence", flush=True)
+    np_predicted = get_predictions(categories_scores_total, 0.75)
+    calculate_accuracy(np_gold_truth, np_predicted)
+
+    print("Calculating accuracy on 0.90 confidence", flush=True)
+    np_predicted = get_predictions(categories_scores_total, 0.90)
+    calculate_accuracy(np_gold_truth, np_predicted)
+
+    print("Calculating accuracy on 0.98 confidence", flush=True)
+    np_predicted = get_predictions(categories_scores_total, 0.98)
+    calculate_accuracy(np_gold_truth, np_predicted)
+
 
 if __name__ == '__main__':
+
+    if use_cuda:
+        if len(sys.argv) < 2:
+            print("Expected 1 arguments: [0] = GPU (0 or 1)", flush=True)
+            exit()
+        torch.cuda.set_device(int(sys.argv[1]))
+        print("Using GPU: %s" % sys.argv[1], flush=True)
+
     num_articles = -1
     num_eval = 5000
 
@@ -176,7 +258,7 @@ if __name__ == '__main__':
     kernel_sizes = [3, 4, 5]
     num_classes = 6
 
-    n_epochs = 100
+    n_epochs = 12
     batch_size = 16
 
     print("Using cuda: " + str(use_cuda), flush=True)
