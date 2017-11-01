@@ -284,7 +284,7 @@ def count_categories(data):
 
 
 if __name__ == '__main__':
-    tag = "ntb_80_6cat"
+    tag = "ntb_80_5cat"
     max_words = 80
     min_words = 25
     min_title = 4
@@ -293,7 +293,7 @@ if __name__ == '__main__':
     print("min title: %d" % min_title)
 
     wanted_categories = ["Sport", "Økonomi og næringsliv", "Politikk", "Kriminalitet og rettsvesen",
-                         "Ulykker og naturkatastrofer", "Krig og konflikter"]
+                         "Ulykker og naturkatastrofer"]
     # wanted_categories = ["Kriminalitet og rettsvesen", "Ulykker og naturkatastrofer", "Krig og konflikter"]
 
     articles = get_articles_from_pickle_file('../data/ntb/ntb.pkl', max_words, min_words, min_title, wanted_categories)

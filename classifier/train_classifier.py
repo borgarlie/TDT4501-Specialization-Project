@@ -1,3 +1,4 @@
+import json
 import sys
 sys.path.append('..')  # ugly dirtyfix for imports to work
 
@@ -8,6 +9,7 @@ from torch import optim
 
 import numpy as np
 from sklearn.metrics import accuracy_score
+from sklearn.metrics import precision_recall_fscore_support
 
 from classifier.cnn_classifier import CNN_Text as CNN_Text
 from seq2seq_summarization.globals import *
@@ -163,6 +165,20 @@ def calculate_accuracy(gold_truth, predictions, writer, epoch):
     writer.add_scalars('Accuracy', accuracy_dict, epoch)
 
 
+def calculate_f1(gold_truth, predictions, writer, epoch):
+    precision, recall, f1_score, support = precision_recall_fscore_support(gold_truth, predictions)
+    writer_dict = {}
+    num_categories = len(gold_truth[0])
+    for i in range(0, num_categories):
+        writer_dict["Precision %d" % i] = precision[i]
+        writer_dict["Recall %d" % i] = recall[i]
+        writer_dict["f1_score %d" % i] = f1_score[i]
+        writer_dict["support %d" % i] = float(support[i])
+    print(writer_dict, flush=True)
+    print(json.dumps(writer_dict, indent=2), flush=True)
+    writer.add_scalars('Precision_recall_f1', writer_dict, epoch)
+
+
 def get_predictions(model_scores, min_score):
     predicted = []
     for example in range(0, len(model_scores)):
@@ -177,7 +193,7 @@ def get_predictions(model_scores, min_score):
 
 
 def eval_single_article(category, sequence, model, criterion):
-    categories_scores = model(sequence)
+    categories_scores = model(sequence, mode='Test')
 
     categories = Variable(torch.FloatTensor([category]))
     if use_cuda:
@@ -225,6 +241,8 @@ def evaluate(articles, titles, vocabulary, model, writer, train_loss, epoch):
     print("Calculating accuracy on 0.00 confidence", flush=True)
     np_predicted = get_predictions(categories_scores_total, 0.00)
     calculate_accuracy(np_gold_truth, np_predicted, writer, epoch)
+    print("Calculating f1 score", flush=True)
+    calculate_f1(np_gold_truth, np_predicted, writer, epoch)
 
 
 if __name__ == '__main__':
@@ -239,23 +257,29 @@ if __name__ == '__main__':
     writer = SummaryWriter('../log/test_classifier')
 
     num_articles = -1
-    num_eval = 5000
+    num_eval = 6500
 
     learning_rate = 0.001
     hidden_size = 128
     dropout_p = 0.5
     num_kernels = 100
     kernel_sizes = [3, 4, 5]
-    num_classes = 6
+    num_classes = 5
 
-    n_epochs = 12
+    n_epochs = 5
     batch_size = 16
 
     print("Using cuda: " + str(use_cuda), flush=True)
 
-    relative_path = '../data/ntb_processed/ntb_80_6cat.unk'
+    relative_path = '../data/ntb_processed/ntb_80_5cat.unk'
 
     articles, titles, vocabulary = preprocess.generate_vocabulary(relative_path, num_articles, True)
+
+    # shuffle articles and titles (equally)
+    # c = list(zip(articles, titles))
+    # random.shuffle(c)
+    # articles_shuffled, titles_shuffled = zip(*c)
+
     train_articles = articles[0:num_articles-num_eval]
     train_titles = titles[0:num_articles-num_eval]
     eval_articles = articles[num_articles-num_eval:num_articles]

@@ -180,8 +180,8 @@ if __name__ == '__main__':
     # relative_path_len80 = '../data/articles2_nor/all_len_25to80v3'
     # relative_path_len80_skip = '../data/articles2_nor/all_len_25to80_skip_v3'
 
-    relative_path_ntb = '../data/ntb/ntb_80_6cat'
-    relative_path_ntb_unked = '../data/ntb/ntb_80_6cat.unk'
+    relative_path_ntb = '../data/ntb/ntb_80_5cat'
+    relative_path_ntb_unked = '../data/ntb/ntb_80_5cat.unk'
 
     with_categories = True
     article, title, vocabulary = generate_vocabulary(relative_path_ntb_unked, -1, with_categories)

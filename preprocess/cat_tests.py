@@ -18,7 +18,7 @@ def count_categories(articles):
 
 
 def count_categories_total(articles):
-    cats = [0, 0, 0, 0, 0, 0]
+    cats = [0, 0, 0, 0, 0]
     for article in articles:
         categories = article.split(" ")[0]
         for i in range(0, len(categories)):

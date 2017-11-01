@@ -22,7 +22,7 @@ class CNN_Text(nn.Module):
         self.dropout = nn.Dropout(self.dropout_p)
         self.fc1 = nn.Linear(len(self.kernel_sizes) * self.num_kernels, self.num_classes)
 
-    def forward(self, input):
+    def forward(self, input, mode='Train'):
         x = self.embed(input)
 
         x = x.unsqueeze(1)
@@ -33,6 +33,8 @@ class CNN_Text(nn.Module):
 
         x = torch.cat(x, 1)
 
-        x = self.dropout(x)
+        if mode == 'Train':
+            x = self.dropout(x)
+
         logit = self.fc1(x)
         return logit
