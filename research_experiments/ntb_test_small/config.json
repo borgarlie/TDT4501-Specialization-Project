@@ -1,16 +1,16 @@
 {
   "train" : {
-    "dataset" : "../data/ntb_processed/ntb_80_6cat.unk",
-    "num_articles" : 100,
-    "num_evaluate" : 10,
-    "throw" : 10,
+    "dataset" : "../data/ntb_processed/ntb_80_5cat.unk",
+    "num_articles" : -1,
+    "num_evaluate" : 6500,
+    "throw" : 1000,
     "with_categories": true,
     "num_epochs" : 30,
-    "batch_size" : 1,
+    "batch_size" : 16,
     "learning_rate" : 0.01,
     "decay_epoch" : 25,
     "decay_frequency": 3,
-    "teacher_forcing_ratio" : 0.0,
+    "teacher_forcing_ratio" : 0.5,
     "load" : false,
     "load_file" : "test1.pth.tar"
   },
@@ -33,8 +33,8 @@
     "best_save_file" : "test1_best.pth.tar"
   },
   "log" : {
-    "print_every" : 10,
-    "plot_every" : 10
+    "print_every" : 200,
+    "plot_every" : 200
   },
   "tensorboard" : {
     "log_path" : "../log/research_ntb_test_1"

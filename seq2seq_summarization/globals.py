@@ -30,6 +30,13 @@ def pad_seq(seq, max_length):
     return seq
 
 
+def category_from_string(category_string):
+    categories = []
+    for cat in category_string:
+        categories.append(int(cat))
+    return categories
+
+
 def indexes_from_sentence(vocabulary, sentence):
     if single_char:
         return [vocabulary.word2index[word] for word in sentence] + [EOS_token]

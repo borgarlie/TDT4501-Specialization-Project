@@ -1,14 +1,14 @@
 import random
 
+import numpy as np
 import torch.nn as nn
 
 from seq2seq_summarization.globals import *
 
 
 # Train one batch
-def train(config, input_variable, input_lengths, target_variable, target_lengths,
-          encoder, decoder, encoder_optimizer, decoder_optimizer, criterion):
-
+def train(config, vocabulary, input_variable, input_lengths, target_variable, target_lengths, categories,
+          encoder, decoder, classifier, encoder_optimizer, decoder_optimizer, criterion, classifier_criterion):
     attention = config['model']['attention']
     batch_size = config['train']['batch_size']
     teacher_forcing_ratio = config['train']['teacher_forcing_ratio']
@@ -26,6 +26,8 @@ def train(config, input_variable, input_lengths, target_variable, target_lengths
 
     use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
+    decoder_outputs = [[] for i in range(0, batch_size)]
+
     if use_teacher_forcing:
         # Teacher forcing: Feed the target as the next input
         for di in range(max_target_length):
@@ -33,9 +35,17 @@ def train(config, input_variable, input_lengths, target_variable, target_lengths
                 decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
                                                                             encoder_outputs, batch_size)
             else:
-                decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, batch_size)
+                decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, categories, batch_size)
             loss += criterion(decoder_output, target_variable[di])
             decoder_input = target_variable[di]  # Teacher forcing
+
+            # target_data = target_variable[di].data.cpu().numpy()
+            topv, topi = decoder_output.data.topk(1)
+            ni = topi  # next input, batch of top softmax scores
+            target_data = ni.cpu().numpy()
+            for batch_index in range(0, len(target_data)):
+                # decoder_outputs[batch_index].append(vocabulary.index2word[target_data[batch_index]])
+                decoder_outputs[batch_index].append(target_data[batch_index].item())
     else:
         # Without teacher forcing: use its own predictions as the next input
         for di in range(max_target_length):
@@ -43,18 +53,51 @@ def train(config, input_variable, input_lengths, target_variable, target_lengths
                 decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
                                                                             encoder_outputs, batch_size)
             else:
-                decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, batch_size)
+                decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, categories, batch_size)
             topv, topi = decoder_output.data.topk(1)
             ni = topi  # next input, batch of top softmax scores
+
+            # target_data = target_variable[di].data.cpu().numpy()
+            target_data = ni.cpu().numpy()
+            for batch_index in range(0, len(target_data)):
+                # decoder_outputs[batch_index].append(vocabulary.index2word[target_data[batch_index]])
+                decoder_outputs[batch_index].append(target_data[batch_index].item())
+
             decoder_input = Variable(torch.cuda.LongTensor(ni)) if use_cuda else Variable(torch.LongTensor(ni))
+
             loss += criterion(decoder_output, target_variable[di])
 
-    loss.backward()
+    decoder_output_variable = Variable(torch.LongTensor(decoder_outputs))
+    if use_cuda:
+        decoder_output_variable = decoder_output_variable.cuda()
+
+    prediction_scores = classifier(decoder_output_variable, mode='Test')
+    classifier_loss = classifier_criterion(prediction_scores, categories)
+
+    # print("Decoder outputs: ")
+    # print(decoder_outputs)
+    # print("Prediction_scores: ")
+    # print(prediction_scores)
+    # print("Categories : ")
+    # print(categories)
+    # print("classifier loss: ")
+    # print(classifier_loss)
+    # print("Old loss: ")
+    # print(loss)
+    # print("", flush=True)
+    # exit()
+
+    # TODO: Scale linearly with epoch? epoch 0 = 1, epoch max/2 = 0.5 and epoch max = 1 ?
+    weight = 1.0 + np.log(1 + classifier_loss.data[0])
+    # weight = 1.0
+    newloss = weight.item() * loss
+    newloss.backward()
 
     encoder_optimizer.step()
     decoder_optimizer.step()
 
-    return loss.data[0]
+    # TODO: should return both losses, old and new for printing
+    return newloss.data[0]
 
 
 def chunks(l, n):
@@ -68,8 +111,9 @@ def adjust_learning_rate(optimizer, new_learning_rate):
         param_group['lr'] = new_learning_rate
 
 
-def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary, encoder, decoder, max_length,
-                encoder_optimizer, decoder_optimizer, writer, start_epoch=1, total_runtime=0, with_categories=False):
+def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary, encoder, decoder, classifier,
+                max_length, encoder_optimizer, decoder_optimizer, writer, start_epoch=1, total_runtime=0,
+                with_categories=False):
 
     start = time.time()
     plot_losses = []
@@ -84,6 +128,7 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
     plot_every = config['log']['plot_every']
 
     criterion = nn.NLLLoss()
+    classifier_criterion = nn.BCEWithLogitsLoss()
 
     num_batches = int(len(articles) / batch_size)
     n_iters = num_batches * n_epochs
@@ -121,8 +166,9 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
             categories, input_variable, input_lengths, target_variable, target_lengths = random_batch(batch_size, vocabulary,
                     article_batches[batch], title_batches[batch], max_length, attention, with_categories)
 
-            loss = train(config, input_variable, input_lengths, target_variable, target_lengths,
-                         encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
+            loss = train(config, vocabulary, input_variable, input_lengths, target_variable, target_lengths, categories,
+                         encoder, decoder, classifier, encoder_optimizer, decoder_optimizer, criterion,
+                         classifier_criterion)
 
             print_loss_total += loss
             plot_loss_total += loss
@@ -233,7 +279,8 @@ def calculate_loss_on_single_eval_article(attention, encoder, decoder, criterion
     return loss.data[0]
 
 
-def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, max_length, with_categories=False):
+def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, classifier, max_length,
+                      with_categories=False):
     for i in range(len(articles)):
         if with_categories:
             category, input_sentence = split_category_and_article(articles[i])
@@ -376,7 +423,8 @@ def random_batch(batch_size, vocabulary, articles, titles, max_length, attention
     for i in range(batch_size):
         if with_categories:
             category, article = split_category_and_article(articles[i])
-            categories.append(category.strip())
+            category_variable = category_from_string(category.strip())
+            categories.append(category_variable)
             input_variable = indexes_from_sentence(vocabulary, article.strip())  # is ".strip" necessary?
         else:
             input_variable = indexes_from_sentence(vocabulary, articles[i])
@@ -404,8 +452,12 @@ def random_batch(batch_size, vocabulary, articles, titles, max_length, attention
     input_var = Variable(torch.LongTensor(input_padded)).transpose(0, 1)
     target_var = Variable(torch.LongTensor(target_padded)).transpose(0, 1)
 
+    # no need to transpose categories ?
+    categories_var = Variable(torch.FloatTensor(categories))
+
     if use_cuda:
         input_var = input_var.cuda()
         target_var = target_var.cuda()
+        categories_var = categories_var.cuda()
 
-    return categories, input_var, input_lengths, target_var, target_lengths
+    return categories_var, input_var, input_lengths, target_var, target_lengths

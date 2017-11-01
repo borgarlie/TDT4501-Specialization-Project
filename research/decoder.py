@@ -1,3 +1,5 @@
+import random
+
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
@@ -25,19 +27,37 @@ import torch
 
 
 class DecoderRNN(nn.Module):
-    def __init__(self, hidden_size, output_size, n_layers=1, batch_size=1):
+    def __init__(self, hidden_size, output_size, n_layers=1, batch_size=1, num_categories=5):
         super(DecoderRNN, self).__init__()
         self.batch_size = batch_size
         self.n_layers = n_layers
+
+        # split to embed size and actual hidden size
+        self.embed_size = hidden_size - num_categories
         self.hidden_size = hidden_size
 
-        self.embedding = nn.Embedding(output_size, hidden_size)
+        self.embedding = nn.Embedding(output_size, self.embed_size)
         self.gru = nn.GRU(hidden_size, hidden_size, n_layers)
         self.out = nn.Linear(hidden_size, output_size)
         self.softmax = nn.LogSoftmax()
 
-    def forward(self, input, hidden, batch_size=1):
-        output = self.embedding(input).view(1, batch_size, self.hidden_size)
+    def forward(self, input, hidden, categories, batch_size=1):
+        output = self.embedding(input).view(1, batch_size, self.embed_size)
+        # print("OUTPUT = ", flush=True)
+        # print(output, flush=True)
+
+        categories = categories.unsqueeze(0)
+        # print("categories: ", flush=True)
+        # print(categories, flush=True)
+
+        # concatenate embedding with categories
+        output = torch.cat((output, categories), 2)
+
+        # if random.random() < 0.01:
+        #     print("OUTPUT 2 = ", flush=True)
+        #     print(output, flush=True)
+        #     # exit()
+
         output, hidden = self.gru(output, hidden)
         output = self.softmax(self.out(output[0]))
         return output, hidden

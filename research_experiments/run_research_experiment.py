@@ -1,7 +1,7 @@
 import json
 import sys
+import os
 sys.path.append('..')  # ugly dirtyfix for imports to work
-
 
 from seq2seq_summarization import preprocess as preprocess
 from seq2seq_summarization import preprocess_single_char as preprocess_single_char
@@ -9,6 +9,8 @@ from research.decoder import *
 from research.encoder import *
 from seq2seq_summarization.globals import *
 from research.train import *
+from classifier.cnn_classifier import CNN_Text
+
 from torch import optim
 from tensorboardX import SummaryWriter
 
@@ -126,9 +128,26 @@ if __name__ == '__main__':
             print("No file found: exiting", flush=True)
             exit()
 
+    # initial classifier parameters - overwritten by state dict loading
+    hidden_size = 128
+    dropout_p = 0.5
+    num_kernels = 100
+    kernel_sizes = [3, 4, 5]
+    num_classes = 5
+
+    # create and load classifier parameters
+    classifier = CNN_Text(vocabulary.n_words, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p)
+
+    classifier_path = config['classifier']['path']
+    classifier.load_state_dict(load_classifier(classifier_path))
+    if use_cuda:
+        classifier = classifier.cuda()
+
+    classifier.eval()  # ?
+
     train_iters(config, train_articles, train_titles, test_articles, test_titles, vocabulary,
-                encoder, decoder, max_length, encoder_optimizer, decoder_optimizer,
+                encoder, decoder, classifier, max_length, encoder_optimizer, decoder_optimizer,
                 writer, start_epoch=start_epoch, total_runtime=total_runtime, with_categories=with_categories)
 
-    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length,
+    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, classifier, max_length=max_length,
                       with_categories=with_categories)
