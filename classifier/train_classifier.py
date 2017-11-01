@@ -12,6 +12,7 @@ from sklearn.metrics import accuracy_score
 from classifier.cnn_classifier import CNN_Text as CNN_Text
 from seq2seq_summarization.globals import *
 from seq2seq_summarization import preprocess as preprocess
+from tensorboardX import SummaryWriter
 
 
 # Train one batch
@@ -43,7 +44,8 @@ def chunks(l, n):
         yield l[i:i + n]
 
 
-def train_iters(articles, titles, vocabulary, model, optimizer, eval_articles, eval_titles, batch_size, n_epochs):
+def train_iters(articles, titles, vocabulary, model, optimizer, eval_articles, eval_titles, writer, batch_size
+                , n_epochs):
 
     start = time.time()
     plot_losses = []
@@ -61,7 +63,7 @@ def train_iters(articles, titles, vocabulary, model, optimizer, eval_articles, e
     total_runtime = 0.0
 
     # Evaluate once before starting to train
-    evaluate(eval_articles, eval_titles, vocabulary, model)
+    evaluate(eval_articles, eval_titles, vocabulary, model, writer, 1, 0)
 
     print("Starting training", flush=True)
     for epoch in range(1, n_epochs + 1):
@@ -103,8 +105,9 @@ def train_iters(articles, titles, vocabulary, model, optimizer, eval_articles, e
                 plot_losses.append(plot_loss_avg)
                 plot_loss_total = 0
 
+        batch_loss_avg /= num_batches
             # evaluate epoch on test set
-        evaluate(eval_articles, eval_titles, vocabulary, model)
+        evaluate(eval_articles, eval_titles, vocabulary, model, writer, batch_loss_avg, epoch)
 
     print("Done with training")
 
@@ -136,10 +139,13 @@ def random_batch(vocabulary, articles, titles):
     return categories, sequences
 
 
-def calculate_accuracy(gold_truth, predictions):
+def calculate_accuracy(gold_truth, predictions, writer, epoch):
     # calculate total accuracy
     accuracy = accuracy_score(gold_truth, predictions)
     print("Total Accuracy: %0.4f" % accuracy, flush=True)
+
+    # Accuracy dictionary for tensorboard
+    accuracy_dict = {'Total accuracy': accuracy}
 
     # calculate accuracy for single categories
     num_categories = len(gold_truth[0])
@@ -153,6 +159,8 @@ def calculate_accuracy(gold_truth, predictions):
         predictions_i = np.array(predictions_i)
         accuracy_i = accuracy_score(gold_truth_i, predictions_i)
         print("Accuracy for category %d: %0.4f" % (i, accuracy_i), flush=True)
+        accuracy_dict.update({'Accuracy for category %d' % i: accuracy_i})
+    writer.add_scalars('Accuracy', accuracy_dict, epoch)
 
 
 def get_predictions(model_scores, min_score):
@@ -186,7 +194,7 @@ def create_single_article_category_list(category_string):
     return categories
 
 
-def evaluate(articles, titles, vocabulary, model):
+def evaluate(articles, titles, vocabulary, model, writer, train_loss, epoch):
     print("Evaluating", flush=True)
     criterion = nn.BCEWithLogitsLoss()
     total_loss = 0
@@ -208,35 +216,15 @@ def evaluate(articles, titles, vocabulary, model):
     avg_loss = total_loss / len(articles)
     print("Avg evaluation loss: %0.4f" % avg_loss, flush=True)
 
+    # Making a loss dictionary for tensorboard
+    loss_dict = {'train_loss': train_loss, 'eval_loss': avg_loss}
+    writer.add_scalars('Loss', loss_dict, epoch)
+
     np_gold_truth = np.array(categories_total)
-
-    print("Test 1", flush=True)
-    print(categories_total[14], flush=True)
-    print(categories_scores_total[14], flush=True)
-
-    print("Test 2", flush=True)
-    print(categories_total[2134], flush=True)
-    print(categories_scores_total[2134], flush=True)
 
     print("Calculating accuracy on 0.00 confidence", flush=True)
     np_predicted = get_predictions(categories_scores_total, 0.00)
-    calculate_accuracy(np_gold_truth, np_predicted)
-
-    print("Calculating accuracy on 0.50 confidence", flush=True)
-    np_predicted = get_predictions(categories_scores_total, 0.50)
-    calculate_accuracy(np_gold_truth, np_predicted)
-
-    print("Calculating accuracy on 0.75 confidence", flush=True)
-    np_predicted = get_predictions(categories_scores_total, 0.75)
-    calculate_accuracy(np_gold_truth, np_predicted)
-
-    print("Calculating accuracy on 0.90 confidence", flush=True)
-    np_predicted = get_predictions(categories_scores_total, 0.90)
-    calculate_accuracy(np_gold_truth, np_predicted)
-
-    print("Calculating accuracy on 0.98 confidence", flush=True)
-    np_predicted = get_predictions(categories_scores_total, 0.98)
-    calculate_accuracy(np_gold_truth, np_predicted)
+    calculate_accuracy(np_gold_truth, np_predicted, writer, epoch)
 
 
 if __name__ == '__main__':
@@ -247,6 +235,8 @@ if __name__ == '__main__':
             exit()
         torch.cuda.set_device(int(sys.argv[1]))
         print("Using GPU: %s" % sys.argv[1], flush=True)
+
+    writer = SummaryWriter('../log/test_classifier')
 
     num_articles = -1
     num_eval = 5000
@@ -276,5 +266,7 @@ if __name__ == '__main__':
         model = model.cuda()
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    train_iters(train_articles, train_titles, vocabulary, model, optimizer, eval_articles, eval_titles, batch_size,
-                n_epochs)
+    train_iters(train_articles, train_titles, vocabulary, model, optimizer, eval_articles, eval_titles,
+                writer, batch_size, n_epochs)
+
+    writer.close()
