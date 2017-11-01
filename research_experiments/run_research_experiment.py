@@ -5,10 +5,10 @@ sys.path.append('..')  # ugly dirtyfix for imports to work
 
 from seq2seq_summarization import preprocess as preprocess
 from seq2seq_summarization import preprocess_single_char as preprocess_single_char
-from seq2seq_summarization.decoder import *
-from seq2seq_summarization.encoder import *
+from research.decoder import *
+from research.encoder import *
 from seq2seq_summarization.globals import *
-from seq2seq_summarization.train import *
+from research.train import *
 from torch import optim
 from tensorboardX import SummaryWriter
 
@@ -19,6 +19,14 @@ def load_state(filename):
         return (state['epoch'], state['runtime'],
                 state['model_state_encoder'], state['model_state_decoder'],
                 state['optimizer_state_encoder'], state['optimizer_state_decoder'])
+    else:
+        raise FileNotFoundError
+
+
+def load_classifier(filename):
+    if os.path.isfile(filename):
+        state = torch.load(filename)
+        return state['model']
     else:
         raise FileNotFoundError
 

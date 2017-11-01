@@ -174,7 +174,6 @@ def calculate_f1(gold_truth, predictions, writer, epoch):
         writer_dict["Recall %d" % i] = recall[i]
         writer_dict["f1_score %d" % i] = f1_score[i]
         writer_dict["support %d" % i] = float(support[i])
-    print(writer_dict, flush=True)
     print(json.dumps(writer_dict, indent=2), flush=True)
     writer.add_scalars('Precision_recall_f1', writer_dict, epoch)
 
@@ -245,6 +244,10 @@ def evaluate(articles, titles, vocabulary, model, writer, train_loss, epoch):
     calculate_f1(np_gold_truth, np_predicted, writer, epoch)
 
 
+def save_state(state, filename):
+    torch.save(state, filename)
+
+
 if __name__ == '__main__':
 
     if use_cuda:
@@ -266,7 +269,7 @@ if __name__ == '__main__':
     kernel_sizes = [3, 4, 5]
     num_classes = 5
 
-    n_epochs = 5
+    n_epochs = 3
     batch_size = 16
 
     print("Using cuda: " + str(use_cuda), flush=True)
@@ -294,3 +297,12 @@ if __name__ == '__main__':
                 writer, batch_size, n_epochs)
 
     writer.close()
+
+    print("Saving model", flush=True)
+
+    save_state({
+        'model': model.state_dict()
+    }, "model/classifier1.pth.tar")
+
+    print("Model saved", flush=True)
+    print("Done", flush=True)
