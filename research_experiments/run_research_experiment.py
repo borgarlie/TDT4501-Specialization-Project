@@ -149,5 +149,10 @@ if __name__ == '__main__':
                 encoder, decoder, classifier, max_length, encoder_optimizer, decoder_optimizer,
                 writer, start_epoch=start_epoch, total_runtime=total_runtime, with_categories=with_categories)
 
-    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, classifier, max_length=max_length,
-                      with_categories=with_categories)
+    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, classifier,
+                      max_length=max_length, with_categories=with_categories)
+
+    mini_test_articles = test_articles[0:100]
+    mini_test_titles = test_titles[0:100]
+    evaluate_all_categories(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder, classifier,
+                            max_length, num_classes)

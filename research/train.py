@@ -8,7 +8,8 @@ from seq2seq_summarization.globals import *
 
 # Train one batch
 def train(config, vocabulary, input_variable, input_lengths, target_variable, target_lengths, categories,
-          encoder, decoder, classifier, encoder_optimizer, decoder_optimizer, criterion, classifier_criterion):
+          encoder, decoder, classifier, encoder_optimizer, decoder_optimizer, criterion, classifier_criterion,
+          epoch):
     attention = config['model']['attention']
     batch_size = config['train']['batch_size']
     teacher_forcing_ratio = config['train']['teacher_forcing_ratio']
@@ -88,16 +89,24 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
     # exit()
 
     # TODO: Scale linearly with epoch? epoch 0 = 1, epoch max/2 = 0.5 and epoch max = 1 ?
-    weight = 1.0 + (np.log(1 + classifier_loss.data[0]) / 2)
+    # weight = 1.0 + (np.log(1 + classifier_loss.data[0]) / 2)
     # weight = 1.0
-    newloss = weight.item() * loss
-    newloss.backward()
+    # newloss = weight.item() * loss
+
+    max_epoch = config['train']['num_epochs']
+    scaling = 5 * np.log(1 + epoch) / max_epoch
+    reference = 30
+    weight = np.log(1 + classifier_loss.data[0] / 2)
+    extra_loss = scaling * weight * reference
+    total_loss = loss + extra_loss
+
+    total_loss.backward()
 
     encoder_optimizer.step()
     decoder_optimizer.step()
 
     # TODO: should return both losses, old and new for printing
-    return loss.data[0], newloss.data[0]
+    return loss.data[0], total_loss.data[0]
 
 
 def chunks(l, n):
@@ -170,7 +179,7 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
 
             loss, newloss = train(config, vocabulary, input_variable, input_lengths, target_variable, target_lengths, categories,
                          encoder, decoder, classifier, encoder_optimizer, decoder_optimizer, criterion,
-                         classifier_criterion)
+                         classifier_criterion, epoch)
 
             print_loss_total += loss
             plot_loss_total += loss
@@ -311,6 +320,31 @@ def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, cl
         print('', flush=True)
 
 
+def evaluate_all_categories(config, articles, titles, vocabulary, encoder, decoder, classifier, max_length, num_cats):
+    for i in range(len(articles)):
+        for k in range(0, num_cats):
+            _, input_sentence = split_category_and_article(articles[i])
+            category = [0] * num_cats
+            category[k] = 1
+            categories = [category]
+            categories_var = Variable(torch.FloatTensor(categories))
+            if use_cuda:
+                categories_var = categories_var.cuda()
+            target_sentence = titles[i]
+            print('>', input_sentence, flush=True)
+            print("C: ", category, flush=True)
+            print('=', target_sentence, flush=True)
+            output_beams = evaluate(config, vocabulary, encoder, decoder, input_sentence, categories_var, max_length)
+            for beam in output_beams:
+                output_words = beam.decoded_word_sequence
+                if single_char:
+                    output_sentence = ''.join(output_words)  # For single characters
+                else:
+                    output_sentence = ' '.join(output_words)  # for words
+                print('<', str(beam.get_avg_score()), output_sentence, flush=True)
+            print('', flush=True)
+
+
 def evaluate(config, vocabulary, encoder, decoder, sentence, category, max_length):
     attention = config['model']['attention']
     if attention:
@@ -399,25 +433,6 @@ class Beam:
         return self.__repr__()
 
 
-# def evaluate_single_beam(vocabulary, decoder, decoded_words, decoder_input, decoder_hidden, encoder_outputs, max_length, attention=False):
-#     for di in range(max_length):
-#         if attention:
-#             decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs, 1)
-#         else:
-#             decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
-#         topv, topi = decoder_output.data.topk(1)
-#         ni = topi[0][0]
-#         if ni == EOS_token:
-#             decoded_words.append('<EOS>')
-#             break
-#         else:
-#             decoded_words.append(vocabulary.index2word[ni])
-#         decoder_input = Variable(torch.LongTensor([[ni]]))
-#         decoder_input = decoder_input.cuda() if use_cuda else decoder_input
-#
-#     return decoded_words
-
-
 def save_state(state, filename):
     torch.save(state, filename)
 
@@ -474,3 +489,11 @@ def random_batch(batch_size, vocabulary, articles, titles, max_length, attention
         categories_var = categories_var.cuda()
 
     return categories_var, input_var, input_lengths, target_var, target_lengths
+
+
+if __name__ == '__main__':
+    num_cats = 5
+    for k in range(num_cats):
+        category = [0] * num_cats
+        category[k] = 1
+        print(category)
