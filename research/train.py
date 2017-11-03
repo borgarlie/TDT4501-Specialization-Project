@@ -34,7 +34,7 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
         for di in range(max_target_length):
             if attention:
                 decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
-                                                                            encoder_outputs, batch_size)
+                                                                            encoder_outputs, categories, batch_size)
             else:
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, categories, batch_size)
             loss += criterion(decoder_output, target_variable[di])
@@ -52,7 +52,7 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
         for di in range(max_target_length):
             if attention:
                 decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
-                                                                            encoder_outputs, batch_size)
+                                                                            encoder_outputs, categories, batch_size)
             else:
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, categories, batch_size)
             topv, topi = decoder_output.data.topk(1)
@@ -286,7 +286,7 @@ def calculate_loss_on_single_eval_article(attention, encoder, decoder, criterion
     for di in range(target_variable.size()[0]):
         if attention:
             decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
-                                                                        encoder_outputs, 1)
+                                                                        encoder_outputs, category, 1)
         else:
             decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, category, 1)
         topv, topi = decoder_output.data.topk(1)
@@ -419,7 +419,8 @@ class Beam:
         decoder_input = Variable(torch.LongTensor([self.input_token]))
         decoder_input = decoder_input.cuda() if use_cuda else decoder_input
         if attention:
-            decoder_output, decoder_hidden, _ = decoder(decoder_input, self.input_hidden, encoder_outputs, 1)
+            decoder_output, decoder_hidden, _ = decoder(decoder_input, self.input_hidden, encoder_outputs,
+                                                        self.category, 1)
         else:
             # batch_size = 1 as we do not care about batching during evaluation
             decoder_output, decoder_hidden = decoder(decoder_input, self.input_hidden, self.category, 1)
@@ -489,11 +490,3 @@ def random_batch(batch_size, vocabulary, articles, titles, max_length, attention
         categories_var = categories_var.cuda()
 
     return categories_var, input_var, input_lengths, target_var, target_lengths
-
-
-if __name__ == '__main__':
-    num_cats = 5
-    for k in range(num_cats):
-        category = [0] * num_cats
-        category[k] = 1
-        print(category)
