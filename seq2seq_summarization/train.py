@@ -1,6 +1,7 @@
 import os
 import random
 
+import numpy
 import torch.nn as nn
 
 from seq2seq_summarization.globals import *
@@ -339,11 +340,12 @@ class Beam:
     def __str__(self):
         return self.__repr__()
 
-
-# def evaluate_single_beam(vocabulary, decoder, decoded_words, decoder_input, decoder_hidden, encoder_outputs, max_length, attention=False):
+# def evaluate_single_beam(vocabulary, decoder, decoded_words, decoder_input, decoder_hidden, encoder_outputs,
+# max_length, attention=False):
 #     for di in range(max_length):
 #         if attention:
-#             decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs, 1)
+#             decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
+# encoder_outputs, 1)
 #         else:
 #             decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
 #         topv, topi = decoder_output.data.topk(1)
@@ -357,6 +359,65 @@ class Beam:
 #         decoder_input = decoder_input.cuda() if use_cuda else decoder_input
 #
 #     return decoded_words
+
+
+def evaluate_attention(config, vocabulary, encoder, decoder, test_articles, max_length):
+    relative_path = config['save']['attention_path']
+    decoder_attentions = []
+    output_words = []
+    for i in range(len(test_articles)):
+        output, attention = get_attention_weights(vocabulary, encoder, decoder, test_articles[i], max_length)
+        decoder_attentions.append(attention)
+        output_words.append(output)
+
+    # saving 3 files, 2 .txt for article and title and 1 binary for attention weights
+    save_attention_files(relative_path, test_articles, output_words)
+    torch.save(decoder_attentions, relative_path + 'attention_weights')
+
+
+def save_attention_files(relative_path,test_articles, output_words):
+    with open(relative_path + 'test_articles.txt', 'w') as f:
+        for item in test_articles:
+            f.write(item)
+            f.write("\n")
+
+    with open(relative_path + 'test_titles.txt', 'w') as f:
+        for item in output_words:
+            f.write(" ".join(item))
+            f.write("\n")
+
+
+def get_attention_weights(vocabulary, encoder, decoder, sentence, max_length):
+    _, sentence = split_category_and_article(sentence)
+    input_variable = indexes_from_sentence(vocabulary, sentence)
+    input_variable = pad_seq(input_variable, max_length)
+    input_length = max_length
+    input_variable = Variable(torch.LongTensor(input_variable)).unsqueeze(1)
+    input_variable = input_variable.cuda() if use_cuda else input_variable
+
+    encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
+
+    decoder_input = Variable(torch.LongTensor([[SOS_token]]))  # SOS
+    decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+
+    decoder_hidden = encoder_hidden
+
+    decoded_words = []
+    decoder_attentions = torch.zeros(max_length, max_length)
+
+    for di in range(max_length):
+        decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs, 1)
+        decoder_attentions[di] = decoder_attention.data
+        topv, topi = decoder_output.data.topk(1)
+        ni = topi[0][0]
+        if ni == EOS_token:
+            decoded_words.append('<EOS>')
+            break
+        else:
+            decoded_words.append(vocabulary.index2word[ni])
+        decoder_input = Variable(torch.LongTensor([[ni]]))
+        decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+    return decoded_words, decoder_attentions[:di + 1]
 
 
 def save_state(state, filename):

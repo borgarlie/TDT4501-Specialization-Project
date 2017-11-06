@@ -122,5 +122,8 @@ if __name__ == '__main__':
                 encoder, decoder, max_length, encoder_optimizer, decoder_optimizer,
                 writer, start_epoch=start_epoch, total_runtime=total_runtime, with_categories=with_categories)
 
-    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length,
-                      with_categories=with_categories)
+    # evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length,
+    #                   with_categories=with_categories)
+
+    if attention:
+        evaluate_attention(config, vocabulary, encoder, decoder, test_articles, max_length)
