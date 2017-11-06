@@ -88,6 +88,8 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
     # print("", flush=True)
     # exit()
 
+    # TESTING OF NEW LOSS
+
     # TODO: Scale linearly with epoch? epoch 0 = 1, epoch max/2 = 0.5 and epoch max = 1 ?
     # weight = 1.0 + (np.log(1 + classifier_loss.data[0]) / 2)
     # weight = 1.0
@@ -95,10 +97,12 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
 
     max_epoch = config['train']['num_epochs']
     scaling = 5 * np.log(1 + epoch) / max_epoch
-    reference = 30
+    reference = 50
     weight = np.log(1 + classifier_loss.data[0] / 2)
     extra_loss = scaling * weight * reference
     total_loss = loss + extra_loss
+
+    # TESTING OF NEW LOSS DONE
 
     total_loss.backward()
 
@@ -106,7 +110,7 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
     decoder_optimizer.step()
 
     # TODO: should return both losses, old and new for printing
-    return loss.data[0], total_loss.data[0]
+    return loss.data[0], total_loss.data[0], classifier_loss.data[0]
 
 
 def chunks(l, n):
@@ -128,7 +132,8 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
     plot_losses = []
     print_loss_total = 0  # Reset every print_every
     plot_loss_total = 0  # Reset every plot_every
-    print_newloss_total = 0 # Reset every plot_every
+    print_newloss_total = 0  # Reset every plot_every
+    print_loss_classifier = 0
     lowest_loss = 999  # TODO: FIX THIS. save and load
 
     n_epochs = config['train']['num_epochs']
@@ -177,27 +182,32 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
             categories, input_variable, input_lengths, target_variable, target_lengths = random_batch(batch_size, vocabulary,
                     article_batches[batch], title_batches[batch], max_length, attention, with_categories)
 
-            loss, newloss = train(config, vocabulary, input_variable, input_lengths, target_variable, target_lengths, categories,
-                         encoder, decoder, classifier, encoder_optimizer, decoder_optimizer, criterion,
-                         classifier_criterion, epoch)
+            loss, newloss, classifier_loss = train(config, vocabulary, input_variable, input_lengths, target_variable,
+                                                   target_lengths, categories, encoder, decoder, classifier,
+                                                   encoder_optimizer, decoder_optimizer, criterion,
+                                                   classifier_criterion, epoch)
 
             print_loss_total += loss
             plot_loss_total += loss
             batch_loss_avg += loss
             print_newloss_total += newloss
             batch_newloss_avg += newloss
+            print_loss_classifier += classifier_loss
             # calculate number of batches processed
             itr = (epoch-1) * num_batches + batch + 1
 
             if itr % print_every == 0:
                 print_loss_avg = print_loss_total / print_every
                 print_newloss_avg = print_newloss_total / print_every
+                print_loss_classifier_avg = print_loss_classifier / print_every
                 print_loss_total = 0
                 print_newloss_total = 0
+                print_loss_classifier = 0
                 progress, total_runtime = time_since(start, itr / n_iters, total_runtime)
                 start = time.time()
                 print('%s (%d %d%%) %.4f' % (progress, itr, itr / n_iters * 100, print_loss_avg), flush=True)
                 print("Newloss: %.4f" % print_newloss_avg, flush=True)
+                print("Classifier loss: %.4f" % print_loss_classifier_avg, flush=True)
                 if print_loss_avg < lowest_loss:
                     lowest_loss = print_loss_avg
                     print(" ^ Lowest loss so far", flush=True)
@@ -236,8 +246,6 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
 
         calculate_loss_on_eval_set(config, vocabulary, encoder, decoder, criterion, writer, epoch, max_length,
                                    eval_articles, eval_titles, with_categories)
-
-        # show_plot(plot_losses)
 
 
 # Calculate loss on the evaluation set. Does not modify anything.
@@ -320,10 +328,20 @@ def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, cl
         print('', flush=True)
 
 
+def get_predictions(model_scores, min_score=0.0):
+    example_predictions = []
+    for score in range(0, len(model_scores)):
+        if model_scores[score] > min_score:
+            example_predictions.append(1)
+        else:
+            example_predictions.append(0)
+    return example_predictions
+
+
 def evaluate_all_categories(config, articles, titles, vocabulary, encoder, decoder, classifier, max_length, num_cats):
     for i in range(len(articles)):
         for k in range(0, num_cats):
-            _, input_sentence = split_category_and_article(articles[i])
+            real_cat, input_sentence = split_category_and_article(articles[i])
             category = [0] * num_cats
             category[k] = 1
             categories = [category]
@@ -332,7 +350,8 @@ def evaluate_all_categories(config, articles, titles, vocabulary, encoder, decod
                 categories_var = categories_var.cuda()
             target_sentence = titles[i]
             print('>', input_sentence, flush=True)
-            print("C: ", category, flush=True)
+            print("Real Category: ", real_cat, flush=True)
+            print("Test Category: ", category, flush=True)
             print('=', target_sentence, flush=True)
             output_beams = evaluate(config, vocabulary, encoder, decoder, input_sentence, categories_var, max_length)
             for beam in output_beams:
@@ -341,7 +360,14 @@ def evaluate_all_categories(config, articles, titles, vocabulary, encoder, decod
                     output_sentence = ''.join(output_words)  # For single characters
                 else:
                     output_sentence = ' '.join(output_words)  # for words
-                print('<', str(beam.get_avg_score()), output_sentence, flush=True)
+                # predict class
+                decoder_output_variable = Variable(torch.LongTensor([beam.decoded_outputs]))
+                if use_cuda:
+                    decoder_output_variable = decoder_output_variable.cuda()
+                model_scores = classifier(decoder_output_variable, 'Test')
+                model_scores = model_scores.data.cpu().numpy()[0]
+                predictions = get_predictions(model_scores)
+                print('<', str(beam.get_avg_score()), predictions, output_sentence, flush=True)
             print('', flush=True)
 
 
@@ -364,7 +390,7 @@ def evaluate(config, vocabulary, encoder, decoder, sentence, category, max_lengt
     return_beams = config['evaluate']['return_beams']
 
     # first decoder beam. input_hidden = encoder_hidden
-    beams = [Beam([], [], SOS_token, encoder_hidden, category)]
+    beams = [Beam([], [], [], SOS_token, encoder_hidden, category)]
     for i in range(max_length):
         beams = expand_and_prune_beams(vocabulary, beams, encoder_outputs, decoder, attention, expansions, keep_beams)
 
@@ -385,8 +411,9 @@ def prune_beams(beams, num_keep_beams):
 
 
 class Beam:
-    def __init__(self, decoded_word_sequence, scores, input_token, input_hidden, category):
+    def __init__(self, decoded_word_sequence, decoded_outputs, scores, input_token, input_hidden, category):
         self.decoded_word_sequence = decoded_word_sequence
+        self.decoded_outputs = decoded_outputs
         self.scores = scores  # This is a list of log(output from softmax) for each word in the sequence
         self.input_token = input_token
         self.input_hidden = input_hidden
@@ -403,13 +430,14 @@ class Beam:
     def generate_expanded_beams(self, vocabulary, topv, topi, decoder_hidden, expansions=5):
         for i in range(expansions):
             next_word = topi[0][i]
+            decoded_outputs = list(self.decoded_outputs) + [next_word]
             decoded_words = list(self.decoded_word_sequence) + [vocabulary.index2word[next_word]]
             # Using log(score) to be able to sum instead of multiply,
             # so that we are able to take the average based on number of tokens in the sequence
             # next_score = numpy.log2(topv[0][i]) - already using log Softmax
             next_score = topv[0][i]
             new_scores = list(self.scores) + [next_score]
-            yield Beam(decoded_words, new_scores, next_word, decoder_hidden, self.category)
+            yield Beam(decoded_words, decoded_outputs, new_scores, next_word, decoder_hidden, self.category)
 
     # return list of expanded beams. return self if current beam is at end of sentence
     def expand(self, vocabulary, encoder_outputs, decoder, attention=False, expansions=5):

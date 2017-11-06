@@ -152,7 +152,16 @@ if __name__ == '__main__':
     evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, classifier,
                       max_length=max_length, with_categories=with_categories)
 
-    mini_test_articles = test_articles[0:100]
-    mini_test_titles = test_titles[0:100]
+    # print("Evaluation on train articles", flush=True)
+    #
+    # mini_test_articles = train_articles[0:20]
+    # mini_test_titles = train_titles[0:20]
+    # evaluate_all_categories(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder, classifier,
+    #                         max_length, num_classes)
+
+    print("Evaluation for all categories on small subset of test articles", flush=True)
+
+    mini_test_articles = test_articles[0:20]
+    mini_test_titles = test_titles[0:20]
     evaluate_all_categories(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder, classifier,
                             max_length, num_classes)
