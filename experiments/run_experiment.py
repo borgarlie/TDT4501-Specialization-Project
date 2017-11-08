@@ -100,8 +100,8 @@ if __name__ == '__main__':
         encoder = encoder.cuda()
         decoder = decoder.cuda()
 
-    encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
-    decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
+    encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate)
+    decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate)
 
     total_runtime = 0
     start_epoch = 1

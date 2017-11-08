@@ -59,8 +59,9 @@ def generate_vocabulary(relative_path, max_size=-1, with_categories=False):
             art = article[i]
         # art = art.strip()
         vocabulary.add_sentence(art)
-        if len(art.split(' ')) > longest_sentence:
-            longest_sentence = len(art.split(' '))
+        sentence_length = len(art.strip().split(' '))
+        if sentence_length > longest_sentence:
+            longest_sentence = sentence_length
     for i in range(0, max_size):
         vocabulary.add_sentence(title[i])
         if len(title[i].split(' ')) > longest_sentence:
