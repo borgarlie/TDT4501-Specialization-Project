@@ -23,6 +23,8 @@ def train(config, input_variable, input_lengths, target_variable, target_lengths
     encoder_outputs, encoder_hidden = encoder(input_variable, input_lengths, None)
 
     encoder_hidden = _concat_encoder_hidden_directions(encoder_hidden)
+    num_layers = config['model']['n_layers']
+    encoder_hidden = encoder_hidden.repeat(num_layers, 1, 1)
 
     decoder_input = Variable(torch.LongTensor([SOS_token] * batch_size))
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
@@ -215,17 +217,21 @@ def calculate_loss_on_eval_set(config, vocabulary, encoder, decoder, criterion, 
         target_variable = Variable(torch.LongTensor(target_variable)).unsqueeze(1)
         target_variable = target_variable.cuda() if use_cuda else target_variable
 
-        loss += calculate_loss_on_single_eval_article(attention, encoder, decoder, criterion, input_variable,
+        loss += calculate_loss_on_single_eval_article(config, attention, encoder, decoder, criterion, input_variable,
                                                       target_variable, input_length)
     loss_avg = loss / len(eval_articles)
     writer.add_scalar('Evaluation loss', loss_avg, epoch)
     print("Evaluation set loss for epoch %d: %.4f" % (epoch, loss_avg), flush=True)
 
 
-def calculate_loss_on_single_eval_article(attention, encoder, decoder, criterion, input_variable, target_variable,
+def calculate_loss_on_single_eval_article(config, attention, encoder, decoder, criterion, input_variable, target_variable,
                                           input_length):
     loss = 0
     encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
+
+    encoder_hidden = _concat_encoder_hidden_directions(encoder_hidden)
+    num_layers = config['model']['n_layers']
+    encoder_hidden = encoder_hidden.repeat(num_layers, 1, 1)
 
     decoder_input = Variable(torch.LongTensor([SOS_token]))
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
@@ -278,6 +284,10 @@ def evaluate(config, vocabulary, encoder, decoder, sentence, max_length):
         input_length = input_variable.size()[0]
 
     encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
+
+    encoder_hidden = _concat_encoder_hidden_directions(encoder_hidden)
+    num_layers = config['model']['n_layers']
+    encoder_hidden = encoder_hidden.repeat(num_layers, 1, 1)
 
     expansions = config['evaluate']['expansions']
     keep_beams = config['evaluate']['keep_beams']
@@ -356,7 +366,7 @@ def evaluate_attention(config, vocabulary, encoder, decoder, test_articles, max_
     decoder_attentions = []
     output_words = []
     for i in range(len(test_articles)):
-        output, attention = get_attention_weights(vocabulary, encoder, decoder, test_articles[i], max_length)
+        output, attention = get_attention_weights(config, vocabulary, encoder, decoder, test_articles[i], max_length)
         decoder_attentions.append(attention)
         output_words.append(output)
 
@@ -377,7 +387,7 @@ def save_attention_files(relative_path,test_articles, output_words):
             f.write("\n")
 
 
-def get_attention_weights(vocabulary, encoder, decoder, sentence, max_length):
+def get_attention_weights(config, vocabulary, encoder, decoder, sentence, max_length):
     _, sentence = split_category_and_article(sentence)
     input_variable = indexes_from_sentence(vocabulary, sentence)
     input_variable = pad_seq(input_variable, max_length)
@@ -386,6 +396,10 @@ def get_attention_weights(vocabulary, encoder, decoder, sentence, max_length):
     input_variable = input_variable.cuda() if use_cuda else input_variable
 
     encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
+
+    encoder_hidden = _concat_encoder_hidden_directions(encoder_hidden)
+    num_layers = config['model']['n_layers']
+    encoder_hidden = encoder_hidden.repeat(num_layers, 1, 1)
 
     decoder_input = Variable(torch.LongTensor([[SOS_token]]))  # SOS
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
