@@ -86,9 +86,14 @@ if __name__ == '__main__':
 
     print("Range test: %d - %d" % (train_length, train_length+test_length), flush=True)
 
-    encoder = EncoderRNN(vocabulary.n_words, hidden_size, n_layers=n_layers, batch_size=batch_size)
+    # Always use 1 layer in encoder, and vary decoder instead. We are not sure how multiple layers affect bidirectional
+    # encoder.
+    encoder = EncoderRNN(vocabulary.n_words, hidden_size, n_layers=1, batch_size=batch_size)
 
-    max_length = max(len(article.split(' ')) for article in articles) + 1
+    if config['train']['with_categories']:
+        max_length = max(len(article.split(">>>")[1].strip().split(' ')) for article in articles) + 1
+    else:
+        max_length = max(len(article.split(' ')) for article in articles) + 1
 
     if attention:
         decoder = AttnDecoderRNN(hidden_size, vocabulary.n_words, max_length=max_length, n_layers=n_layers,
@@ -122,8 +127,8 @@ if __name__ == '__main__':
                 encoder, decoder, max_length, encoder_optimizer, decoder_optimizer,
                 writer, start_epoch=start_epoch, total_runtime=total_runtime, with_categories=with_categories)
 
-    # evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length,
-    #                   with_categories=with_categories)
+    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length,
+                      with_categories=with_categories)
 
-    if attention:
-        evaluate_attention(config, vocabulary, encoder, decoder, test_articles, max_length)
+    # if attention:
+    #     evaluate_attention(config, vocabulary, encoder, decoder, test_articles, max_length)

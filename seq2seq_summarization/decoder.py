@@ -29,7 +29,7 @@ class DecoderRNN(nn.Module):
         super(DecoderRNN, self).__init__()
         self.batch_size = batch_size
         self.n_layers = n_layers
-        self.hidden_size = hidden_size
+        self.hidden_size = hidden_size * 2  # * 2 because of bidirectional encoder
 
         self.embedding = nn.Embedding(output_size, hidden_size)
         self.gru = nn.GRU(hidden_size, hidden_size, n_layers)
@@ -53,7 +53,7 @@ class DecoderRNN(nn.Module):
 class AttnDecoderRNN(nn.Module):
     def __init__(self, hidden_size, output_size, max_length, n_layers=1, dropout_p=0.1, batch_size=1):
         super(AttnDecoderRNN, self).__init__()
-        self.hidden_size = hidden_size
+        self.hidden_size = hidden_size * 2  # * 2 because of bidirectional encoder
         self.output_size = output_size
         self.n_layers = n_layers
         self.dropout_p = dropout_p

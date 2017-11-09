@@ -22,6 +22,8 @@ def train(config, input_variable, input_lengths, target_variable, target_lengths
     loss = 0
     encoder_outputs, encoder_hidden = encoder(input_variable, input_lengths, None)
 
+    encoder_hidden = _concat_encoder_hidden_directions(encoder_hidden)
+
     decoder_input = Variable(torch.LongTensor([SOS_token] * batch_size))
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
     decoder_hidden = encoder_hidden
@@ -57,6 +59,14 @@ def train(config, input_variable, input_lengths, target_variable, target_lengths
     decoder_optimizer.step()
 
     return loss.data[0]
+
+
+def _concat_encoder_hidden_directions(h):
+    """ do the following transformation:
+        (#directions * #layers, #batch, hidden_size) -> (#layers, #batch, #directions * hidden_size)
+        to compensate for two directions in a bidirectional encoder
+    """
+    return torch.cat([h[0:h.size(0):2], h[1:h.size(0):2]], 2)
 
 
 def chunks(l, n):
@@ -339,26 +349,6 @@ class Beam:
 
     def __str__(self):
         return self.__repr__()
-
-# def evaluate_single_beam(vocabulary, decoder, decoded_words, decoder_input, decoder_hidden, encoder_outputs,
-# max_length, attention=False):
-#     for di in range(max_length):
-#         if attention:
-#             decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden,
-# encoder_outputs, 1)
-#         else:
-#             decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, 1)
-#         topv, topi = decoder_output.data.topk(1)
-#         ni = topi[0][0]
-#         if ni == EOS_token:
-#             decoded_words.append('<EOS>')
-#             break
-#         else:
-#             decoded_words.append(vocabulary.index2word[ni])
-#         decoder_input = Variable(torch.LongTensor([[ni]]))
-#         decoder_input = decoder_input.cuda() if use_cuda else decoder_input
-#
-#     return decoded_words
 
 
 def evaluate_attention(config, vocabulary, encoder, decoder, test_articles, max_length):
