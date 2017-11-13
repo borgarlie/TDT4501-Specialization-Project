@@ -186,8 +186,12 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
             'optimizer_state_decoder': decoder_optimizer.state_dict()
         }, config['experiment_path'] + "/" + config['save']['save_file'])
 
+        encoder.eval()
+        decoder.eval()
         calculate_loss_on_eval_set(config, vocabulary, encoder, decoder, criterion, writer, epoch, max_length,
                                    eval_articles, eval_titles, with_categories)
+        encoder.train()
+        decoder.train()
 
         # show_plot(plot_losses)
 
