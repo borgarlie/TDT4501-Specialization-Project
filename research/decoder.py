@@ -26,12 +26,14 @@ import torch
 # last hidden state).
 
 
+# TODO: Check that it works for non-attention with bidirectional
 class DecoderRNN(nn.Module):
     def __init__(self, hidden_size, output_size, n_layers=1, batch_size=1, num_categories=5):
         super(DecoderRNN, self).__init__()
         self.batch_size = batch_size
         self.n_layers = n_layers
 
+        hidden_size = hidden_size * 2  # * 2 because of bidirectional encoder
         # split to embed size and actual hidden size
         self.embed_size = hidden_size - num_categories
         self.hidden_size = hidden_size
@@ -79,6 +81,7 @@ class AttnDecoderRNN(nn.Module):
         self.max_length = max_length
         self.batch_size = batch_size
 
+        hidden_size = hidden_size * 2  # * 2 because of bidirectional encoder
         # split to embed size and actual hidden size
         self.embed_size = hidden_size - num_categories
         self.hidden_size = hidden_size

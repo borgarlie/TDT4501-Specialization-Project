@@ -6,7 +6,7 @@ sys.path.append('..')  # ugly dirtyfix for imports to work
 from seq2seq_summarization import preprocess as preprocess
 from seq2seq_summarization import preprocess_single_char as preprocess_single_char
 from research.decoder import *
-from research.encoder import *
+from seq2seq_summarization.encoder import *
 from seq2seq_summarization.globals import *
 from research.train import *
 from classifier.cnn_classifier import CNN_Text
@@ -110,8 +110,8 @@ if __name__ == '__main__':
         encoder = encoder.cuda()
         decoder = decoder.cuda()
 
-    encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
-    decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
+    encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate, weight_decay=1e-05)
+    decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate, weight_decay=1e-05)
 
     total_runtime = 0
     start_epoch = 1
@@ -129,10 +129,10 @@ if __name__ == '__main__':
             exit()
 
     # initial classifier parameters - overwritten by state dict loading
-    hidden_size = 128
-    dropout_p = 0.5
+    hidden_size = 64
+    dropout_p = 0.7
     num_kernels = 100
-    kernel_sizes = [3, 4, 5]
+    kernel_sizes = [2, 3, 4]
     num_classes = 5
 
     # create and load classifier parameters
@@ -148,6 +148,9 @@ if __name__ == '__main__':
     train_iters(config, train_articles, train_titles, test_articles, test_titles, vocabulary,
                 encoder, decoder, classifier, max_length, encoder_optimizer, decoder_optimizer,
                 writer, start_epoch=start_epoch, total_runtime=total_runtime, with_categories=with_categories)
+
+    encoder.eval()
+    decoder.eval()
 
     evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, classifier,
                       max_length=max_length, with_categories=with_categories)

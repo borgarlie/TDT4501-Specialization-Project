@@ -11,7 +11,7 @@
     "decay_epoch" : 999,
     "decay_frequency": 5,
     "teacher_forcing_ratio" : 0.9,
-    "load" : true,
+    "load" : false,
     "load_file" : "test1.pth.tar"
   },
   "evaluate" : {

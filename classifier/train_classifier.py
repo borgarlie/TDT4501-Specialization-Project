@@ -109,7 +109,10 @@ def train_iters(articles, titles, vocabulary, model, optimizer, eval_articles, e
 
         batch_loss_avg /= num_batches
             # evaluate epoch on test set
+
+        model.eval()
         evaluate(eval_articles, eval_titles, vocabulary, model, writer, batch_loss_avg, epoch)
+        model.train()
 
     print("Done with training")
 
@@ -263,13 +266,13 @@ if __name__ == '__main__':
     num_eval = 6500
 
     learning_rate = 0.001
-    hidden_size = 128
-    dropout_p = 0.5
+    hidden_size = 64
+    dropout_p = 0.7
     num_kernels = 100
-    kernel_sizes = [3, 4, 5]
+    kernel_sizes = [2, 3, 4]
     num_classes = 5
 
-    n_epochs = 3
+    n_epochs = 5
     batch_size = 16
 
     print("Using cuda: " + str(use_cuda), flush=True)

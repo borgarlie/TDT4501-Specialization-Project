@@ -21,6 +21,10 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
     loss = 0
     encoder_outputs, encoder_hidden = encoder(input_variable, input_lengths, None)
 
+    encoder_hidden = _concat_encoder_hidden_directions(encoder_hidden)
+    num_layers = config['model']['n_layers']
+    encoder_hidden = encoder_hidden.repeat(num_layers, 1, 1)
+
     decoder_input = Variable(torch.LongTensor([SOS_token] * batch_size))
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
     decoder_hidden = encoder_hidden
@@ -122,6 +126,14 @@ def chunks(l, n):
 def adjust_learning_rate(optimizer, new_learning_rate):
     for param_group in optimizer.param_groups:
         param_group['lr'] = new_learning_rate
+
+
+def _concat_encoder_hidden_directions(h):
+    """ do the following transformation:
+        (#directions * #layers, #batch, hidden_size) -> (#layers, #batch, #directions * hidden_size)
+        to compensate for two directions in a bidirectional encoder
+    """
+    return torch.cat([h[0:h.size(0):2], h[1:h.size(0):2]], 2)
 
 
 def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary, encoder, decoder, classifier,
@@ -244,8 +256,12 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
             'optimizer_state_decoder': decoder_optimizer.state_dict()
         }, config['experiment_path'] + "/" + config['save']['save_file'])
 
+        encoder.eval()
+        decoder.eval()
         calculate_loss_on_eval_set(config, vocabulary, encoder, decoder, criterion, writer, epoch, max_length,
                                    eval_articles, eval_titles, with_categories)
+        encoder.train()
+        decoder.train()
 
 
 # Calculate loss on the evaluation set. Does not modify anything.
@@ -275,17 +291,21 @@ def calculate_loss_on_eval_set(config, vocabulary, encoder, decoder, criterion, 
         target_variable = Variable(torch.LongTensor(target_variable)).unsqueeze(1)
         target_variable = target_variable.cuda() if use_cuda else target_variable
 
-        loss += calculate_loss_on_single_eval_article(attention, encoder, decoder, criterion, input_variable,
+        loss += calculate_loss_on_single_eval_article(config, attention, encoder, decoder, criterion, input_variable,
                                                       target_variable, input_length, categories_var)
     loss_avg = loss / len(eval_articles)
     writer.add_scalar('Evaluation loss', loss_avg, epoch)
     print("Evaluation set loss for epoch %d: %.4f" % (epoch, loss_avg), flush=True)
 
 
-def calculate_loss_on_single_eval_article(attention, encoder, decoder, criterion, input_variable, target_variable,
-                                          input_length, category):
+def calculate_loss_on_single_eval_article(config, attention, encoder, decoder, criterion, input_variable,
+                                          target_variable, input_length, category):
     loss = 0
     encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
+
+    encoder_hidden = _concat_encoder_hidden_directions(encoder_hidden)
+    num_layers = config['model']['n_layers']
+    encoder_hidden = encoder_hidden.repeat(num_layers, 1, 1)
 
     decoder_input = Variable(torch.LongTensor([SOS_token]))
     decoder_input = decoder_input.cuda() if use_cuda else decoder_input
@@ -385,6 +405,10 @@ def evaluate(config, vocabulary, encoder, decoder, sentence, category, max_lengt
 
     encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
 
+    encoder_hidden = _concat_encoder_hidden_directions(encoder_hidden)
+    num_layers = config['model']['n_layers']
+    encoder_hidden = encoder_hidden.repeat(num_layers, 1, 1)
+
     expansions = config['evaluate']['expansions']
     keep_beams = config['evaluate']['keep_beams']
     return_beams = config['evaluate']['return_beams']
@@ -430,6 +454,9 @@ class Beam:
     def generate_expanded_beams(self, vocabulary, topv, topi, decoder_hidden, expansions=5):
         for i in range(expansions):
             next_word = topi[0][i]
+            if len(self.scores) < 4 and (next_word == EOS_token or next_word == PAD_token):
+                expansions += 1
+                continue
             decoded_outputs = list(self.decoded_outputs) + [next_word]
             decoded_words = list(self.decoded_word_sequence) + [vocabulary.index2word[next_word]]
             # Using log(score) to be able to sum instead of multiply,
