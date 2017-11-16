@@ -1,5 +1,6 @@
 import nltk
 import re
+from nltk import tokenize
 
 
 def read_file(path):
@@ -7,18 +8,27 @@ def read_file(path):
     titles = []
     output = []
     not_truth = False
+    temp_title = None
     for line in text.split('\n'):
-        if line.startswith('='):
-            titles.append(line[1:])
+        if line.startswith('>'):
+            temp_title = tokenize.sent_tokenize(line[1:])
             not_truth = True
+        elif line.startswith('='):
+            temp_title.append(line[1:])
         elif line.startswith('<') and not_truth:
+            titles.append(temp_title)
             output.append(line[1:])
             not_truth = False
 
     output = clean_text(output)
-    titles = tokenize_list(titles)
     output = tokenize_list(output)
-    return titles, output
+
+    tokenized_titles = []
+    for title_list in titles:
+        tokenized = tokenize_list(title_list)
+        tokenized_titles.append(tokenized)
+
+    return tokenized_titles, output
 
 
 def avg_bleu_score(titles, output):
@@ -28,7 +38,7 @@ def avg_bleu_score(titles, output):
 
     # Without smoothingfunction we get around 0.3 and with it drops to 0.14. Not sure what is right though
     for i in range(num_examples):
-        avg_bleu += nltk.translate.bleu_score.sentence_bleu([titles[i]], output[i], smoothing_function=cc.method4)
+        avg_bleu += nltk.translate.bleu_score.sentence_bleu(titles[i], output[i], smoothing_function=cc.method4)
 
     return avg_bleu/num_examples
 
@@ -51,9 +61,14 @@ def tokenize_list(input_list):
 
 
 if __name__ == '__main__':
-    path = 'experiments/nhg_test4.txt'
+    # nltk.download('punkt')
+    path = 'experiments/ntb_paramsearch_1/output.txt'
     print("Started extracting titles...")
     titles, output = read_file(path)
+    print(titles[1])
+    print(output[1])
+    print(len(titles))
+    print(len(output))
     print("Done extracting titles...")
     print("starting to evaluate %d examples..." % len(titles))
     print("Got a BLEU scorer equal: %.4f " % avg_bleu_score(titles, output))

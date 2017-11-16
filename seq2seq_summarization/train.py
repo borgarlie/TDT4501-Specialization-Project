@@ -83,7 +83,7 @@ def adjust_learning_rate(optimizer, new_learning_rate):
 
 
 def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary, encoder, decoder, max_length,
-                encoder_optimizer, decoder_optimizer, writer, start_epoch=1, total_runtime=0, with_categories=False):
+                encoder_optimizer, decoder_optimizer, writer, n_epochs=10, start_epoch=1, total_runtime=0, with_categories=False):
 
     start = time.time()
     plot_losses = []
@@ -91,7 +91,7 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
     plot_loss_total = 0  # Reset every plot_every
     lowest_loss = 999  # TODO: FIX THIS. save and load
 
-    n_epochs = config['train']['num_epochs']
+    # n_epochs = config['train']['num_epochs']
     batch_size = config['train']['batch_size']
     attention = config['model']['attention']
     print_every = config['log']['print_every']
@@ -335,6 +335,9 @@ class Beam:
     def generate_expanded_beams(self, vocabulary, topv, topi, decoder_hidden, expansions=5):
         for i in range(expansions):
             next_word = topi[0][i]
+            if len(self.scores) < 4 and (next_word == EOS_token or next_word == PAD_token):
+                expansions += 1
+                continue
             decoded_words = list(self.decoded_word_sequence) + [vocabulary.index2word[next_word]]
             # Using log(score) to be able to sum instead of multiply,
             # so that we are able to take the average based on number of tokens in the sequence

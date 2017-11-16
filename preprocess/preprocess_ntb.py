@@ -35,6 +35,12 @@ def is_not_contructive_article(text):
     return False
 
 
+def is_not_contructive_title(title):
+    if title.startswith("v#"):
+        return True
+    return False
+
+
 def clean_ntb(text):
     words = text.split(" ")
     contains_ntb = False
@@ -135,6 +141,9 @@ class Article:
 
         if is_not_contructive_article(self.body):
             raise ValueError("Not constructive article")
+
+        if is_not_contructive_title(self.title):
+            raise ValueError("Not constructive title")
 
         # parse timestamp
         self.timestamp = parser.parse(art["timestamp"])
