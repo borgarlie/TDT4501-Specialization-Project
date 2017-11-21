@@ -72,12 +72,31 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
 
             loss += criterion(decoder_output, target_variable[di])
 
-    decoder_output_variable = Variable(torch.LongTensor(decoder_outputs))
-    if use_cuda:
-        decoder_output_variable = decoder_output_variable.cuda()
+    # decoder_output_variable = Variable(torch.LongTensor(decoder_outputs[0]))
+    # if use_cuda:
+    #     decoder_output_variable = decoder_output_variable.cuda()
+    #
+    # prediction_scores = classifier(decoder_output_variable, mode='Test')
+    # classifier_loss = classifier_criterion(prediction_scores, categories[0])
 
-    prediction_scores = classifier(decoder_output_variable, mode='Test')
-    classifier_loss = classifier_criterion(prediction_scores, categories)
+    # if random.random() < 0.01:
+    #     decoder_output_variable = Variable(torch.LongTensor([decoder_outputs[0]]))
+    #     if use_cuda:
+    #         decoder_output_variable = decoder_output_variable.cuda()
+    #
+    #     prediction_scores = classifier(decoder_output_variable, mode='Test')
+    #
+    #     categories = categories.data.cpu().numpy()[0].tolist()
+    #     categories = Variable(torch.FloatTensor([categories]))
+    #     if use_cuda:
+    #         categories = categories.cuda()
+    #
+    #     classifier_loss = classifier_criterion(prediction_scores, categories)
+    #
+    #     print("Printing random classifier info", flush=True)
+    #     print("Classifier loss", classifier_loss.data[0], flush=True)
+    #     print("Real category[0]", categories[0], flush=True)
+    #     print("Prediction_scores[0]", prediction_scores[0], flush=True)
 
     # print("Decoder outputs: ")
     # print(decoder_outputs)
@@ -99,12 +118,15 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
     # weight = 1.0
     # newloss = weight.item() * loss
 
-    max_epoch = config['train']['num_epochs']
-    scaling = 5 * np.log(1 + epoch) / max_epoch
-    reference = 50
-    weight = np.log(1 + classifier_loss.data[0] / 2)
-    extra_loss = scaling * weight * reference
-    total_loss = loss + extra_loss
+    # max_epoch = config['train']['num_epochs']
+    # scaling = 5 * np.log(1 + epoch) / max_epoch
+    # reference = 50
+    # weight = np.log(1 + classifier_loss.data[0] / 2)
+    # extra_loss = scaling * weight * reference
+    # total_loss = loss + extra_loss
+
+    classifier_loss = loss
+    total_loss = loss
 
     # TESTING OF NEW LOSS DONE
 
@@ -545,3 +567,95 @@ def random_batch(batch_size, vocabulary, articles, titles, max_length, attention
         categories_var = categories_var.cuda()
 
     return categories_var, input_var, input_lengths, target_var, target_lengths
+
+
+# Evaluate attention things
+
+def evaluate_attention(config, vocabulary, encoder, decoder, test_articles, max_length):
+    relative_path = config['save']['attention_path']
+    decoder_attentions = []
+    output_words = []
+    for i in range(len(test_articles)):
+        print("Evaluating test article: %d" % i, flush=True)
+        output, attention = get_attention_weights(config, vocabulary, encoder, decoder, test_articles[i], max_length)
+        for k in range(len(output)):
+            decoder_attentions.append(attention[k])
+            output_words.append(output[k])
+
+    test_articles = [test_articles[0], test_articles[0], test_articles[0], test_articles[0], test_articles[0]]
+
+    # saving 3 files, 2 .txt for article and title and 1 binary for attention weights
+    save_attention_files(relative_path, test_articles, output_words)
+    torch.save(decoder_attentions, relative_path + 'attention_weights')
+
+
+def save_attention_files(relative_path, test_articles, output_words):
+    with open(relative_path + 'test_articles.txt', 'w') as f:
+        for item in test_articles:
+            f.write(item)
+            f.write("\n")
+
+    with open(relative_path + 'test_titles.txt', 'w') as f:
+        for item in output_words:
+            f.write(" ".join(item))
+            f.write("\n")
+
+
+def get_attention_weights(config, vocabulary, encoder, decoder, sentence, max_length):
+    category, sentence = split_category_and_article(sentence)
+    input_variable = indexes_from_sentence(vocabulary, sentence)
+    input_variable = pad_seq(input_variable, max_length)
+    input_length = max_length
+    input_variable = Variable(torch.LongTensor(input_variable)).unsqueeze(1)
+    input_variable = input_variable.cuda() if use_cuda else input_variable
+
+    # category_variable = category_from_string(category.strip())
+    # categories = [category_variable]
+    # categories_var = Variable(torch.FloatTensor(categories))
+    # if use_cuda:
+    #     categories_var = categories_var.cuda()
+
+    encoder_outputs, encoder_hidden = encoder(input_variable, [input_length], None)
+
+    encoder_hidden = _concat_encoder_hidden_directions(encoder_hidden)
+    num_layers = config['model']['n_layers']
+    encoder_hidden = encoder_hidden.repeat(num_layers, 1, 1)
+
+    total_decoded_words = []
+    total_decoder_attentions = []
+
+    num_cats = 5
+    for k in range(0, num_cats):
+        category = [0] * num_cats
+        category[k] = 1
+        categories = [category]
+        categories_var = Variable(torch.FloatTensor(categories))
+        if use_cuda:
+            categories_var = categories_var.cuda()
+
+        decoder_input = Variable(torch.LongTensor([[SOS_token]]))  # SOS
+        decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+
+        decoder_hidden = encoder_hidden
+
+        decoded_words = []
+        decoder_attentions = torch.zeros(max_length, max_length)
+
+        for di in range(max_length):
+            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs,
+                                                                        categories_var, 1)
+            decoder_attentions[di] = decoder_attention.data
+            topv, topi = decoder_output.data.topk(1)
+            ni = topi[0][0]
+            if ni == EOS_token:
+                decoded_words.append('<EOS>')
+                break
+            else:
+                decoded_words.append(vocabulary.index2word[ni])
+            decoder_input = Variable(torch.LongTensor([[ni]]))
+            decoder_input = decoder_input.cuda() if use_cuda else decoder_input
+
+        total_decoded_words.append(decoded_words)
+        total_decoder_attentions.append(decoder_attentions[:di + 1])
+
+    return total_decoded_words, total_decoder_attentions
