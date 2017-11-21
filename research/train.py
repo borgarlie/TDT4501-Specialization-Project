@@ -370,6 +370,38 @@ def evaluate_randomly(config, articles, titles, vocabulary, encoder, decoder, cl
         print('', flush=True)
 
 
+def evaluate_beam_search_with_attention(config, articles, titles, vocabulary, encoder, decoder, classifier, max_length):
+    relative_path = config['save']['attention_path']
+    for i in range(len(articles)):
+        category, input_sentence = split_category_and_article(articles[i])
+        category_variable = category_from_string(category.strip())
+        categories = [category_variable]
+        categories_var = Variable(torch.FloatTensor(categories))
+        if use_cuda:
+            categories_var = categories_var.cuda()
+        target_sentence = titles[i]
+        print('>', input_sentence, flush=True)
+        print('=', target_sentence, flush=True)
+        output_beams = evaluate(config, vocabulary, encoder, decoder, input_sentence, categories_var, max_length)
+        total_decoder_attentions = []
+        total_decoded_words = []
+        test_articles = []
+        for beam in output_beams:
+            output_words = beam.decoded_word_sequence
+            total_decoded_words.append(output_words)
+            total_decoder_attentions.append(beam.attention_weights)
+            test_articles.append(articles[i])
+            if single_char:
+                output_sentence = ''.join(output_words)  # For single characters
+            else:
+                output_sentence = ' '.join(output_words)  # for words
+            print('<', str(beam.get_avg_score()), output_sentence, flush=True)
+        # saving 3 files, 2 .txt for article and title and 1 binary for attention weights
+        save_attention_files(relative_path, test_articles, total_decoded_words)
+        torch.save(total_decoder_attentions, relative_path + 'attention_weights')
+        print('', flush=True)
+
+
 def get_predictions(model_scores, min_score=0.0):
     example_predictions = []
     for score in range(0, len(model_scores)):
@@ -436,11 +468,15 @@ def evaluate(config, vocabulary, encoder, decoder, sentence, category, max_lengt
     return_beams = config['evaluate']['return_beams']
 
     # first decoder beam. input_hidden = encoder_hidden
-    beams = [Beam([], [], [], SOS_token, encoder_hidden, category)]
+    init_attention_weights = torch.zeros(max_length, max_length)
+    beams = [Beam([], [], init_attention_weights, [], SOS_token, encoder_hidden, category)]
     for i in range(max_length):
         beams = expand_and_prune_beams(vocabulary, beams, encoder_outputs, decoder, attention, expansions, keep_beams)
 
-    return prune_beams(beams, return_beams)
+    pruned_beams = prune_beams(beams, return_beams)
+    for beam in pruned_beams:
+        beam.cut_attention_weights_at_sequence_length()
+    return pruned_beams
 
 
 def expand_and_prune_beams(vocabulary, beams, encoder_outputs, decoder, attention=False, expansions=5,
@@ -457,13 +493,14 @@ def prune_beams(beams, num_keep_beams):
 
 
 class Beam:
-    def __init__(self, decoded_word_sequence, decoded_outputs, scores, input_token, input_hidden, category):
+    def __init__(self, decoded_word_sequence, decoded_outputs, attention_weights, scores, input_token, input_hidden, category):
         self.decoded_word_sequence = decoded_word_sequence
         self.decoded_outputs = decoded_outputs
         self.scores = scores  # This is a list of log(output from softmax) for each word in the sequence
         self.input_token = input_token
         self.input_hidden = input_hidden
         self.category = category
+        self.attention_weights = attention_weights
 
     def get_avg_score(self):
         if len(self.scores) == 0:
@@ -473,7 +510,7 @@ class Beam:
     def __lt__(self, other):
         return self.get_avg_score().__lt__(other.get_avg_score())
 
-    def generate_expanded_beams(self, vocabulary, topv, topi, decoder_hidden, expansions=5):
+    def generate_expanded_beams(self, vocabulary, topv, topi, decoder_hidden, decoder_attention, expansions=5):
         for i in range(expansions):
             next_word = topi[0][i]
             if len(self.scores) < 4 and (next_word == EOS_token or next_word == PAD_token):
@@ -486,7 +523,17 @@ class Beam:
             # next_score = numpy.log2(topv[0][i]) - already using log Softmax
             next_score = topv[0][i]
             new_scores = list(self.scores) + [next_score]
-            yield Beam(decoded_words, decoded_outputs, new_scores, next_word, decoder_hidden, self.category)
+            # new_attention_weights = list(self.attention_weights) + [decoder_attention]
+            # print(self.attention_weights, flush=True)
+            new_attention_weights = self.attention_weights.clone()
+            # new_attention_weights.copy_(self.attention_weights)
+            # print(new_attention_weights, flush=True)
+            # print(len(self.decoded_word_sequence), flush=True)
+            new_attention_weights[len(self.decoded_word_sequence)] = decoder_attention.data
+            # print(new_attention_weights, flush=True)
+            # print("QWEQWEQW", flush=True)
+            yield Beam(decoded_words, decoded_outputs, new_attention_weights, new_scores, next_word, decoder_hidden,
+                       self.category)
 
     # return list of expanded beams. return self if current beam is at end of sentence
     def expand(self, vocabulary, encoder_outputs, decoder, attention=False, expansions=5):
@@ -496,13 +543,17 @@ class Beam:
         decoder_input = Variable(torch.LongTensor([self.input_token]))
         decoder_input = decoder_input.cuda() if use_cuda else decoder_input
         if attention:
-            decoder_output, decoder_hidden, _ = decoder(decoder_input, self.input_hidden, encoder_outputs,
-                                                        self.category, 1)
+            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, self.input_hidden,
+                                                                        encoder_outputs, self.category, 1)
         else:
             # batch_size = 1 as we do not care about batching during evaluation
             decoder_output, decoder_hidden = decoder(decoder_input, self.input_hidden, self.category, 1)
+            decoder_attention = None  # ok ?
         topv, topi = decoder_output.data.topk(expansions)
-        return list(self.generate_expanded_beams(vocabulary, topv, topi, decoder_hidden, expansions))
+        return list(self.generate_expanded_beams(vocabulary, topv, topi, decoder_hidden, decoder_attention, expansions))
+
+    def cut_attention_weights_at_sequence_length(self):
+        self.attention_weights = self.attention_weights[:len(self.decoded_word_sequence)]
 
     def __repr__(self):
         return str(self.get_avg_score())

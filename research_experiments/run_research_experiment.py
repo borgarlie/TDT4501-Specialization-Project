@@ -98,7 +98,11 @@ if __name__ == '__main__':
 
     encoder = EncoderRNN(vocabulary.n_words, hidden_size, n_layers=n_layers, batch_size=batch_size)
 
-    max_length = max(len(article.split(' ')) for article in articles) + 1
+    # max_length = max(len(article.split(' ')) for article in articles) + 1
+    if config['train']['with_categories']:
+        max_length = max(len(article.split(">>>")[1].strip().split(' ')) for article in articles) + 1
+    else:
+        max_length = max(len(article.split(' ')) for article in articles) + 1
 
     if attention:
         decoder = AttnDecoderRNN(hidden_size, vocabulary.n_words, max_length=max_length, n_layers=n_layers,
@@ -152,8 +156,8 @@ if __name__ == '__main__':
     encoder.eval()
     decoder.eval()
 
-    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, classifier,
-                      max_length=max_length, with_categories=with_categories)
+    # evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, classifier,
+    #                   max_length=max_length, with_categories=with_categories)
 
     # print("Evaluation on train articles", flush=True)
     #
@@ -164,7 +168,25 @@ if __name__ == '__main__':
 
     print("Evaluation for all categories on small subset of test articles", flush=True)
 
-    mini_test_articles = test_articles[0:20]
-    mini_test_titles = test_titles[0:20]
-    evaluate_all_categories(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder, classifier,
-                            max_length, num_classes)
+    # mini_test_articles = test_articles[0:100]
+    # mini_test_titles = test_titles[0:100]
+    # evaluate_all_categories(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder, classifier,
+    #                         max_length, num_classes)
+
+# def evaluate_attention(config, vocabulary, encoder, decoder, test_articles, max_length):
+
+    mini_test_articles = test_articles[-1:]
+    mini_test_titles = test_titles[-1:]
+    # print(mini_test_articles, flush=True)
+    # mini_test_titles = train_titles[0:5]
+
+    # evaluate_attention(config, vocabulary, encoder, decoder, mini_test_articles, max_length)
+
+    evaluate_beam_search_with_attention(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder,
+                                        classifier, max_length)
+
+    # def evaluate_beam_search_with_attention(config, mini_test_articles, titles, vocabulary, encoder, decoder,
+    #                                         classifier,
+    #                                         max_length, relative_path):
+
+    print("Done")
