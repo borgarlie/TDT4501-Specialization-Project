@@ -1,6 +1,7 @@
 import json
 import sys
 import os
+
 sys.path.append('..')  # ugly dirtyfix for imports to work
 
 from seq2seq_summarization import preprocess as preprocess
@@ -10,6 +11,7 @@ from seq2seq_summarization.encoder import *
 from seq2seq_summarization.globals import *
 from research.train import *
 from classifier.cnn_classifier import CNN_Text
+from research.calculate_accuracy import test_accuracy
 
 from torch import optim
 from tensorboardX import SummaryWriter
@@ -31,6 +33,29 @@ def load_classifier(filename):
         return state['model']
     else:
         raise FileNotFoundError
+
+
+def print_optimizer_params(optimizer):
+    param_groups = optimizer.state_dict()["param_groups"]
+    print(param_groups, flush=True)
+
+    params = optimizer.state_dict()["state"]
+    for key, value in params.items():
+        print("Param group: ", key, flush=True)
+
+        matrix = value["exp_avg"]
+        numpy_matrix = matrix.cpu().numpy()
+        absolutes = np.absolute(numpy_matrix)
+        suum = np.sum(absolutes)
+        print("Sum: ", suum, flush=True)
+
+        condition_number_1 = np.linalg.norm(numpy_matrix, 2)
+        condition_number_2 = np.linalg.norm(numpy_matrix, -2)
+        print("2 norm", condition_number_1, flush=True)
+        print("-2 norm", condition_number_2, flush=True)
+
+        total_cond = condition_number_1 / condition_number_2
+        print("cond: ", total_cond, flush=True)
 
 
 if __name__ == '__main__':
@@ -128,7 +153,7 @@ if __name__ == '__main__':
             encoder_optimizer.load_state_dict(optimizer_state_encoder)
             decoder_optimizer.load_state_dict(optimizer_state_decoder)
             print("Resuming training from epoch: %d" % start_epoch, flush=True)
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             print("No file found: exiting", flush=True)
             exit()
 
@@ -156,37 +181,43 @@ if __name__ == '__main__':
     encoder.eval()
     decoder.eval()
 
-    # evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, classifier,
-    #                   max_length=max_length, with_categories=with_categories)
+    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, classifier,
+                      max_length=max_length, with_categories=with_categories)
 
-    # print("Evaluation on train articles", flush=True)
-    #
-    # mini_test_articles = train_articles[0:20]
-    # mini_test_titles = train_titles[0:20]
-    # evaluate_all_categories(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder, classifier,
-    #                         max_length, num_classes)
+    print("Evaluation on train articles", flush=True)
+    mini_test_articles = train_articles[0:20]
+    mini_test_titles = train_titles[0:20]
+    evaluate_all_categories(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder, classifier,
+                            max_length, num_classes)
 
     print("Evaluation for all categories on small subset of test articles", flush=True)
+    mini_test_articles = test_articles[0:100]
+    mini_test_titles = test_titles[0:100]
+    evaluate_all_categories(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder, classifier,
+                            max_length, num_classes)
 
-    # mini_test_articles = test_articles[0:100]
-    # mini_test_titles = test_titles[0:100]
-    # evaluate_all_categories(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder, classifier,
-    #                         max_length, num_classes)
+    print("Done with qualitative tests", flush=True)
 
-# def evaluate_attention(config, vocabulary, encoder, decoder, test_articles, max_length):
+    # print("ENCODER PARAMS", flush=True)
+    # print_optimizer_params(encoder_optimizer)
 
-    mini_test_articles = test_articles[-1:]
-    mini_test_titles = test_titles[-1:]
+    # print("DECODER PARAMS", flush=True)
+    # print_optimizer_params(decoder_optimizer)
+
+    # mini_test_articles = test_articles[-1:]
+    # mini_test_titles = test_titles[-1:]
     # print(mini_test_articles, flush=True)
     # mini_test_titles = train_titles[0:5]
 
     # evaluate_attention(config, vocabulary, encoder, decoder, mini_test_articles, max_length)
 
-    evaluate_beam_search_with_attention(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder,
-                                        classifier, max_length)
+    # evaluate_beam_search_with_attention(config, mini_test_articles, mini_test_titles, vocabulary, encoder, decoder,
+    #                                     classifier, max_length)
 
     # def evaluate_beam_search_with_attention(config, mini_test_articles, titles, vocabulary, encoder, decoder,
     #                                         classifier,
     #                                         max_length, relative_path):
 
-    print("Done")
+    test_accuracy(config, test_articles, vocabulary, encoder, decoder, classifier, max_length)
+
+    print("Done", flush=True)

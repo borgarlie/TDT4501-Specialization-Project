@@ -72,12 +72,12 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
 
             loss += criterion(decoder_output, target_variable[di])
 
-    # decoder_output_variable = Variable(torch.LongTensor(decoder_outputs[0]))
-    # if use_cuda:
-    #     decoder_output_variable = decoder_output_variable.cuda()
-    #
-    # prediction_scores = classifier(decoder_output_variable, mode='Test')
-    # classifier_loss = classifier_criterion(prediction_scores, categories[0])
+    decoder_output_variable = Variable(torch.LongTensor(decoder_outputs))
+    if use_cuda:
+        decoder_output_variable = decoder_output_variable.cuda()
+
+    prediction_scores = classifier(decoder_output_variable, mode='Test')
+    classifier_loss = classifier_criterion(prediction_scores, categories)
 
     # if random.random() < 0.01:
     #     decoder_output_variable = Variable(torch.LongTensor([decoder_outputs[0]]))
@@ -113,20 +113,31 @@ def train(config, vocabulary, input_variable, input_lengths, target_variable, ta
 
     # TESTING OF NEW LOSS
 
-    # TODO: Scale linearly with epoch? epoch 0 = 1, epoch max/2 = 0.5 and epoch max = 1 ?
-    # weight = 1.0 + (np.log(1 + classifier_loss.data[0]) / 2)
-    # weight = 1.0
-    # newloss = weight.item() * loss
+    # ##### Scaling ######
+    # reduction_factor = 2  # try with other factors? E.g. 1, 1,25, 1.5, 1.75, 2 ?
+    # weight = 1.0 + (np.log(1 + classifier_loss.data[0]) / reduction_factor)
+    # total_loss = weight.item() * loss
 
+    # #### Scaling linearly #####
+    multiplier = 1
+    weight = multiplier * classifier_loss.data[0]
+    total_loss = weight * loss
+
+    # total_loss = loss
+
+    # ##### Adding #######
     # max_epoch = config['train']['num_epochs']
-    # scaling = 5 * np.log(1 + epoch) / max_epoch
-    # reference = 50
+    # scaling = 5 * np.log(10 + epoch) / max_epoch
+    # reference = 35
     # weight = np.log(1 + classifier_loss.data[0] / 2)
     # extra_loss = scaling * weight * reference
+    #
     # total_loss = loss + extra_loss
+    # total_loss = (1/2)*(loss + extra_loss)**2
 
-    classifier_loss = loss
-    total_loss = loss
+    # ##### Nothing ######
+    # classifier_loss = loss
+    # total_loss = loss
 
     # TESTING OF NEW LOSS DONE
 
@@ -208,6 +219,10 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
         random.shuffle(c)
         articles_shuffled, titles_shuffled = zip(*c)
 
+        # Test without random for ADAM things.
+        # articles_shuffled = articles
+        # titles_shuffled = titles
+
         # split into batches
         article_batches = list(chunks(articles_shuffled, batch_size))
         title_batches = list(chunks(titles_shuffled, batch_size))
@@ -229,6 +244,9 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
             print_loss_classifier += classifier_loss
             # calculate number of batches processed
             itr = (epoch-1) * num_batches + batch + 1
+
+            # log classifier loss for every batch
+            writer.add_scalar('classifier_loss', classifier_loss, itr)
 
             if itr % print_every == 0:
                 print_loss_avg = print_loss_total / print_every
@@ -261,6 +279,18 @@ def train_iters(config, articles, titles, eval_articles, eval_titles, vocabulary
                 plot_loss_avg = plot_loss_total / plot_every
                 plot_losses.append(plot_loss_avg)
                 plot_loss_total = 0
+
+            # temporarily save the model
+            # total_runtime = time.time() - time.time()
+            # save_state({
+            #     'epoch': epoch,
+            #     'runtime': total_runtime,
+            #     'model_state_encoder': encoder.state_dict(),
+            #     'model_state_decoder': decoder.state_dict(),
+            #     'optimizer_state_encoder': encoder_optimizer.state_dict(),
+            #     'optimizer_state_decoder': decoder_optimizer.state_dict()
+            # }, config['experiment_path'] + "/" + "adamtest_clean.pth.tar")
+            # exit()
 
         # log to tensorboard
         writer.add_scalar('loss', batch_loss_avg / num_batches, epoch)
@@ -710,3 +740,4 @@ def get_attention_weights(config, vocabulary, encoder, decoder, sentence, max_le
         total_decoder_attentions.append(decoder_attentions[:di + 1])
 
     return total_decoded_words, total_decoder_attentions
+

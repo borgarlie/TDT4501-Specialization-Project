@@ -1,11 +1,14 @@
 import json
 import sys
+
+from torch import optim
+
 sys.path.append('..')  # ugly dirtyfix for imports to work
 
 import random
+import os
 
 import torch.nn as nn
-from torch import optim
 
 import numpy as np
 from sklearn.metrics import accuracy_score
@@ -108,8 +111,8 @@ def train_iters(articles, titles, vocabulary, model, optimizer, eval_articles, e
                 plot_loss_total = 0
 
         batch_loss_avg /= num_batches
-            # evaluate epoch on test set
 
+        # evaluate epoch on test set
         model.eval()
         evaluate(eval_articles, eval_titles, vocabulary, model, writer, batch_loss_avg, epoch)
         model.train()
@@ -251,6 +254,14 @@ def save_state(state, filename):
     torch.save(state, filename)
 
 
+def load_classifier(filename):
+    if os.path.isfile(filename):
+        state = torch.load(filename)
+        return state['model']
+    else:
+        raise FileNotFoundError
+
+
 if __name__ == '__main__':
 
     if use_cuda:
@@ -290,6 +301,29 @@ if __name__ == '__main__':
     train_titles = titles[0:num_articles-num_eval]
     eval_articles = articles[num_articles-num_eval:num_articles]
     eval_titles = titles[num_articles-num_eval:num_articles]
+
+
+    # TEST STUFF
+    # article_samples = articles[-3:]
+    # title_samples = titles[-3:]
+    # print(article_samples, flush=True)
+    # print(title_samples, flush=True)
+    #
+    #
+    # # create and load classifier parameters
+    # classifier = CNN_Text(vocabulary.n_words, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p)
+    #
+    # classifier_path = "../classifier/model/classifier1.pth.tar"
+    # classifier.load_state_dict(load_classifier(classifier_path))
+    # if use_cuda:
+    #     classifier = classifier.cuda()
+    #
+    # classifier.eval()
+    #
+    # print("done setting up", flush=True)
+    #
+    # evaluate(article_samples, title_samples, vocabulary, classifier, writer, 0, 99)
+    # DONE TEST STUFF
 
     model = CNN_Text(vocabulary.n_words, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p)
     if use_cuda:

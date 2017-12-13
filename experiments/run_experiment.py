@@ -1,5 +1,6 @@
 import json
 import sys
+
 sys.path.append('..')  # ugly dirtyfix for imports to work
 
 
@@ -9,6 +10,9 @@ from seq2seq_summarization.decoder import *
 from seq2seq_summarization.encoder import *
 from seq2seq_summarization.globals import *
 from seq2seq_summarization.train import *
+from classifier.cnn_classifier import CNN_Text
+from seq2seq_summarization.calculate_accuracy_baseline import test_accuracy
+
 from torch import optim
 from tensorboardX import SummaryWriter
 
@@ -19,6 +23,14 @@ def load_state(filename):
         return (state['epoch'], state['runtime'],
                 state['model_state_encoder'], state['model_state_decoder'],
                 state['optimizer_state_encoder'], state['optimizer_state_decoder'])
+    else:
+        raise FileNotFoundError
+
+
+def load_classifier(filename):
+    if os.path.isfile(filename):
+        state = torch.load(filename)
+        return state['model']
     else:
         raise FileNotFoundError
 
@@ -140,5 +152,31 @@ if __name__ == '__main__':
         start_epoch = num_epoch
         encoder.train()
         decoder.train()
+
+    # Used for evaluating attention
     # if attention:
     #     evaluate_attention(config, vocabulary, encoder, decoder, test_articles, max_length)
+
+    encoder.eval()
+    decoder.eval()
+
+    # initial classifier parameters - overwritten by state dict loading
+    hidden_size = 64
+    dropout_p = 0.7
+    num_kernels = 100
+    kernel_sizes = [2, 3, 4]
+    num_classes = 5
+
+    # create and load classifier parameters
+    classifier = CNN_Text(vocabulary.n_words, hidden_size, num_classes, num_kernels, kernel_sizes, dropout_p)
+
+    classifier_path = config['classifier']['path']
+    classifier.load_state_dict(load_classifier(classifier_path))
+    if use_cuda:
+        classifier = classifier.cuda()
+
+    classifier.eval()
+
+    test_accuracy(config, test_articles, vocabulary, encoder, decoder, classifier, max_length)
+
+    print("done", flush=True)
