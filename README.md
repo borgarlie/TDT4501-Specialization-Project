@@ -130,7 +130,7 @@ An example is provided [here](experiments/ntb_test_small/config.json).
 
 Explaination of some of the fields:
 
-`Dataset`: Relative path to the dataset used, without the suffixes (.article.txt and .title.txt)
+`dataset`: Relative path to the dataset used, without the suffixes (.article.txt and .title.txt)
 
 `num_articles`: Number of articles to include from the dataset, -1 means the whole file.
 
