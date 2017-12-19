@@ -135,23 +135,23 @@ if __name__ == '__main__':
             print("No file found: exiting", flush=True)
             exit()
 
-    num_epoch_list = config['train']['num_epochs']
-    for num_epoch in num_epoch_list:
-        train_iters(config, train_articles, train_titles, test_articles, test_titles, vocabulary,
+    num_epoch = config['train']['num_epochs']
+
+    train_iters(config, train_articles, train_titles, test_articles, test_titles, vocabulary,
                     encoder, decoder, max_length, encoder_optimizer, decoder_optimizer,
                     writer, n_epochs=num_epoch, start_epoch=start_epoch, total_runtime=total_runtime, with_categories=with_categories)
 
-        # Set encoder and decoder to evaluation state to disable dropout
-        encoder.eval()
-        decoder.eval()
+    # Set encoder and decoder to evaluation state to disable dropout
+    encoder.eval()
+    decoder.eval()
 
-        print("Starting evaluation test for epoch %d" % num_epoch, flush=True)
-        evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length,
+    print("Starting evaluation test for epoch %d" % num_epoch, flush=True)
+    evaluate_randomly(config, test_articles, test_titles, vocabulary, encoder, decoder, max_length=max_length,
                           with_categories=with_categories)
 
-        start_epoch = num_epoch
-        encoder.train()
-        decoder.train()
+    start_epoch = num_epoch
+    encoder.train()
+    decoder.train()
 
     # Used for evaluating attention
     # if attention:
