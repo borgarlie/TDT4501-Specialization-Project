@@ -130,19 +130,12 @@ An example is provided [here](experiments/ntb_test_small/config.json).
 
 Explaination of some of the fields:
 
-
 `Dataset`: Relative path to the dataset used, without the suffixes (.article.txt and .title.txt)
-
 `num_articles`: Number of articles to include from the dataset, -1 means the whole file.
-
 `num_evaluate`: Number of articles used in the evaluation set
-
 `throw`: Number of articles to not include in either the train or the evaluation set
-
 `with_categories`: true or false, depending on whether or not the dataset includes categories, as shown in the dataset example above.
-
-`classifier/path` Relative path to the saved classifier, as explained below. (Only relevant when running the proposed model)
-
+`classifier/path`: Relative path to the saved classifier, as explained below. (Only relevant when running the proposed model)
 
 Other fields in the config are default values, and not all are relevant. Those that are most relevant to play around with are the model parameters, e.g. `hidden_size`, `dropout_p` and `teacher_forcing_ratio`.
 
